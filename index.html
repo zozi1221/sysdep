@@ -42,7 +42,24 @@
             <h2 id="pageTitle">الحسابات اليومية</h2>
           </div>
           <div class="topbar-actions">
-            <button class="ghost-btn" id="refreshBtn" title="تحديث">
+            <div class="notifications-wrap">
+              <button class="ghost-btn icon-btn notifications-btn" id="notificationsBtn" type="button" title="التنبيهات">
+                <i data-lucide="bell"></i>
+                <span class="notifications-badge hidden" id="notificationsBadge">0</span>
+              </button>
+              <div class="notifications-panel hidden" id="notificationsPanel">
+                <div class="notifications-panel-header">
+                  <strong>تنبيهات التسديد</strong>
+                  <button class="ghost-btn small-btn" type="button" id="closeNotificationsBtn">إغلاق</button>
+                </div>
+                <ul class="notifications-list" id="notificationsList"></ul>
+                <p class="notifications-empty hidden" id="notificationsEmpty">لا توجد تنبيهات حالياً</p>
+              </div>
+            </div>
+            <button class="ghost-btn icon-btn" id="themeToggleBtn" type="button" title="وضع ليلي / نهاري">
+              <i data-lucide="moon" id="themeToggleIcon"></i>
+            </button>
+            <button class="ghost-btn icon-btn" id="refreshBtn" title="تحديث">
               <i data-lucide="refresh-cw"></i>
             </button>
             <div class="fab-stack" id="fabStack">
@@ -98,6 +115,7 @@
                     <th>رقم الهاتف</th>
                     <th>آخر مادة</th>
                     <th>تاريخ الدين</th>
+                    <th>موعد التسديد</th>
                     <th>المبلغ الحالي</th>
                     <th>إجراءات</th>
                   </tr>
@@ -165,6 +183,10 @@
           <input name="amount" required type="number" step="0.01" placeholder="0" />
         </label>
         <label>
+          موعد التسديد
+          <input name="dueDate" type="date" />
+        </label>
+        <label>
           المادة
           <div class="searchable-select" id="customerMaterialSelect">
             <input type="hidden" name="item" id="customerMaterialValue" required />
@@ -223,6 +245,10 @@
           <input name="amount" required type="number" step="0.01" placeholder="0" />
         </label>
         <label>
+          موعد التسديد
+          <input name="dueDate" type="date" />
+        </label>
+        <label>
           ملاحظة
           <textarea name="note" rows="3" placeholder="اختياري"></textarea>
         </label>
@@ -278,6 +304,11 @@
           </button>
         </div>
 
+        <div class="ledger-due-banner hidden" id="ledgerDueBanner">
+          <i data-lucide="calendar-clock"></i>
+          <span>موعد التسديد: <strong id="ledgerDueDate">-</strong></span>
+        </div>
+
         <div class="ledger-summary">
           <div>
             <span>المجموع الكلي للدين</span>
@@ -307,6 +338,7 @@
             <small id="ledgerMaterialsHint">اختيار المواد مطلوب عند "عليه".</small>
           </div>
           <input name="amount" type="number" step="0.01" required placeholder="المبلغ" />
+          <input name="dueDate" type="date" title="موعد التسديد" />
           <button class="primary-btn" type="submit">
             <i data-lucide="plus"></i>
             إضافة حساب
@@ -321,6 +353,7 @@
                 <th>نوع الدين</th>
                 <th>المواد</th>
                 <th>المبلغ</th>
+                <th>موعد التسديد</th>
                 <th>ملاحظة</th>
               </tr>
             </thead>

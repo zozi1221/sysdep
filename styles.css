@@ -9,7 +9,41 @@
   --primary-strong: #105744;
   --accent: #b8872b;
   --danger: #b93434;
+  --warning: #9a6b00;
+  --warning-bg: #fff8df;
+  --warning-border: #ecd99d;
+  --sidebar-bg: #13231d;
+  --sidebar-text: #ffffff;
+  --sidebar-muted: #b9c7bf;
   --shadow: 0 18px 45px rgba(20, 36, 28, 0.12);
+  --pay-bg: #e7f8ef;
+  --pay-border: #b9e8ca;
+  --danger-bg: #fff0ee;
+  --danger-border: #f1c7c2;
+}
+
+[data-theme="dark"] {
+  --bg: #0f1613;
+  --surface: #1a2420;
+  --surface-2: #243029;
+  --text: #e8f0ec;
+  --muted: #9aab9f;
+  --line: #33443c;
+  --primary: #2fa07f;
+  --primary-strong: #248a6d;
+  --accent: #d4a84a;
+  --danger: #e86a6a;
+  --warning: #e8c547;
+  --warning-bg: #2a2618;
+  --warning-border: #5c4f1f;
+  --sidebar-bg: #0a100e;
+  --sidebar-text: #e8f0ec;
+  --sidebar-muted: #8fa396;
+  --shadow: 0 18px 45px rgba(0, 0, 0, 0.35);
+  --pay-bg: #1a2e26;
+  --pay-border: #2a5c48;
+  --danger-bg: #2e1c1c;
+  --danger-border: #5c3030;
 }
 
 * {
@@ -41,21 +75,21 @@ button {
 
 .danger-btn {
   color: var(--danger);
-  border-color: #f1c7c2;
+  border-color: var(--danger-border);
 }
 
 .danger-btn:hover {
-  background: #fff0ee;
+  background: var(--danger-bg);
 }
 
 .pay-btn {
   color: var(--primary);
-  border-color: #b9e8ca;
-  background: #e7f8ef;
+  border-color: var(--pay-border);
+  background: var(--pay-bg);
 }
 
 .pay-btn:hover {
-  background: #d7f2e4;
+  filter: brightness(1.05);
 }
 
 .payment-summary {
@@ -86,8 +120,8 @@ button {
 }
 
 .sidebar {
-  background: #13231d;
-  color: #fff;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
   padding: 28px 22px;
 }
 
@@ -122,7 +156,7 @@ button {
 }
 
 .brand p {
-  color: #b9c7bf;
+  color: var(--sidebar-muted);
   font-size: 13px;
 }
 
@@ -308,7 +342,7 @@ button {
 }
 
 .daily-table-wrap table {
-  min-width: 720px;
+  min-width: 860px;
 }
 
 .hidden,
@@ -375,6 +409,138 @@ button {
   margin-bottom: 14px;
 }
 
+.notifications-wrap {
+  position: relative;
+}
+
+.notifications-btn {
+  position: relative;
+}
+
+.notifications-badge {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+}
+
+.notifications-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  width: min(340px, calc(100vw - 32px));
+  max-height: 360px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.notifications-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.small-btn {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.notifications-list {
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.notification-item {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.notification-item:hover {
+  background: var(--surface-2);
+}
+
+.notification-item strong {
+  color: var(--danger);
+  font-size: 14px;
+}
+
+.notification-item span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.notifications-empty {
+  margin: 0;
+  padding: 20px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 13px;
+}
+
+.overdue-badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.due-overdue {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.due-ok {
+  color: var(--muted);
+}
+
+.ledger-due-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--warning-border);
+  border-radius: 8px;
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.ledger-due-banner.overdue {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
 .search-box {
   display: flex;
   align-items: center;
@@ -383,7 +549,7 @@ button {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0 12px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .search-box input {
@@ -462,10 +628,18 @@ textarea {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   color: var(--text);
   outline: 0;
   padding: 10px 12px;
+}
+
+input[type="date"] {
+  color-scheme: light;
+}
+
+[data-theme="dark"] input[type="date"] {
+  color-scheme: dark;
 }
 
 select[multiple] {
@@ -489,7 +663,7 @@ textarea:focus {
   gap: 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   padding: 0 12px;
 }
 
@@ -672,20 +846,20 @@ label small,
 }
 
 .icon-action.whatsapp {
-  background: #e7f8ef;
-  color: #128c4a;
-  border: 1px solid #b9e8ca;
+  background: var(--pay-bg);
+  color: var(--primary);
+  border: 1px solid var(--pay-border);
 }
 
 .icon-action.pdf {
-  background: #fff0ee;
-  color: #b93434;
-  border: 1px solid #f1c7c2;
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
 }
 
 .inline-account-form {
   display: grid;
-  grid-template-columns: auto minmax(180px, 1fr) 160px auto;
+  grid-template-columns: auto minmax(160px, 1fr) 140px 150px auto;
   gap: 10px;
 }
 
@@ -703,8 +877,8 @@ label small,
   display: none;
   max-width: min(360px, calc(100vw - 40px));
   border-radius: 8px;
-  background: #13231d;
-  color: #fff;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
   padding: 12px 14px;
   box-shadow: var(--shadow);
 }
@@ -1014,6 +1188,16 @@ label small,
     flex-direction: column;
     align-items: flex-start;
     font-size: 13px;
+  }
+
+  .notifications-panel {
+    position: fixed;
+    top: auto;
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    right: 14px;
+    left: 14px;
+    width: auto;
+    max-height: 50vh;
   }
 }
 

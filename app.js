@@ -36,6 +36,8 @@ const state = {
   paymentCustomerId: null,
   editingMaterialId: null,
   search: "",
+  theme: "light",
+  notificationsOpen: false,
 };
 
 const els = {
@@ -86,6 +88,16 @@ const els = {
   whatsappBtn: document.querySelector("#whatsappBtn"),
   pdfBtn: document.querySelector("#pdfBtn"),
   toast: document.querySelector("#toast"),
+  themeToggleBtn: document.querySelector("#themeToggleBtn"),
+  themeToggleIcon: document.querySelector("#themeToggleIcon"),
+  notificationsBtn: document.querySelector("#notificationsBtn"),
+  notificationsBadge: document.querySelector("#notificationsBadge"),
+  notificationsPanel: document.querySelector("#notificationsPanel"),
+  notificationsList: document.querySelector("#notificationsList"),
+  notificationsEmpty: document.querySelector("#notificationsEmpty"),
+  closeNotificationsBtn: document.querySelector("#closeNotificationsBtn"),
+  ledgerDueBanner: document.querySelector("#ledgerDueBanner"),
+  ledgerDueDate: document.querySelector("#ledgerDueDate"),
 };
 
 function money(value) {
@@ -98,6 +110,109 @@ function dateText(value) {
   if (!value) return new Date().toLocaleDateString("ar-IQ");
   if (value.toDate) return value.toDate().toLocaleDateString("ar-IQ");
   return new Date(value).toLocaleDateString("ar-IQ");
+}
+
+function parseDueDate(value) {
+  if (!value) return null;
+  if (value.toDate) return value.toDate();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function startOfDay(date) {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
+function isDueDateOverdue(dueDateValue) {
+  const due = parseDueDate(dueDateValue);
+  if (!due) return false;
+  return startOfDay(due) < startOfDay(new Date());
+}
+
+function sortCustomersByName(customers) {
+  return [...customers].sort((a, b) =>
+    String(a.name || "").localeCompare(String(b.name || ""), "ar", { sensitivity: "base" }),
+  );
+}
+
+function getOverdueCustomers() {
+  return sortCustomersByName(
+    state.customers.filter((customer) => {
+      const total = customerTotal(customer.id);
+      return customer.dueDate && total > 0 && isDueDateOverdue(customer.dueDate);
+    }),
+  );
+}
+
+function dueDateCellHtml(customer) {
+  if (!customer.dueDate) return '<span class="due-ok">-</span>';
+  const overdue = isDueDateOverdue(customer.dueDate) && customerTotal(customer.id) > 0;
+  const label = dateText(customer.dueDate);
+  if (overdue) {
+    return `<span class="due-overdue">${label}<span class="overdue-badge">متأخر</span></span>`;
+  }
+  return `<span class="due-ok">${label}</span>`;
+}
+
+async function syncCustomerDueDate(customerId, dueDate) {
+  if (!dueDate || !state.ready) return;
+  await updateRecord("customers", customerId, { dueDate });
+}
+
+function initTheme() {
+  const saved = localStorage.getItem("sysdep-theme");
+  state.theme = saved === "dark" ? "dark" : "light";
+  applyTheme(state.theme);
+}
+
+function applyTheme(theme) {
+  state.theme = theme;
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("sysdep-theme", theme);
+  els.themeToggleIcon.setAttribute("data-lucide", theme === "dark" ? "sun" : "moon");
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function toggleTheme() {
+  applyTheme(state.theme === "dark" ? "light" : "dark");
+}
+
+function closeNotificationsPanel() {
+  state.notificationsOpen = false;
+  els.notificationsPanel.classList.add("hidden");
+}
+
+function toggleNotificationsPanel() {
+  state.notificationsOpen = !state.notificationsOpen;
+  els.notificationsPanel.classList.toggle("hidden", !state.notificationsOpen);
+  if (state.notificationsOpen) renderNotifications();
+}
+
+function renderNotifications() {
+  const overdue = getOverdueCustomers();
+  els.notificationsBadge.textContent = String(overdue.length);
+  els.notificationsBadge.classList.toggle("hidden", overdue.length === 0);
+
+  if (!overdue.length) {
+    els.notificationsList.innerHTML = "";
+    els.notificationsEmpty.classList.remove("hidden");
+    return;
+  }
+
+  els.notificationsEmpty.classList.add("hidden");
+  els.notificationsList.innerHTML = overdue
+    .map(
+      (customer) => `
+        <li class="notification-item" data-open-ledger="${customer.id}">
+          <strong>${customer.name}</strong>
+          <span>لم يسدد حتى موعد ${dateText(customer.dueDate)}</span>
+          <span>المبلغ المستحق: ${money(customerTotal(customer.id))} د.ع</span>
+        </li>
+      `,
+    )
+    .join("");
 }
 
 function toast(message) {
@@ -161,7 +276,7 @@ async function withTimeout(promise, ms = FIRESTORE_TIMEOUT_MS, message = "انت
 
 async function initFirebase() {
   if (!isFirebaseConfigured()) {
-    els.firebaseNote.classList.remove("hidden");
+    els.firebaseNote?.classList.remove("hidden");
     toast("Firebase غير مفعّل بعد. ضع إعدادات مشروعك داخل app.js.");
     return;
   }
@@ -172,10 +287,10 @@ async function initFirebase() {
       experimentalForceLongPolling: true,
     });
     state.ready = true;
-    els.firebaseNote.classList.add("hidden");
+    els.firebaseNote?.classList.add("hidden");
   } catch (error) {
     console.error("Firebase initialization error:", error);
-    toast("");
+    toast("حدث خطأ أثناء تهيئة Firebase. راجع كونسول المتصفح.");
   }
 }
 
@@ -236,9 +351,11 @@ async function loadData() {
       ]),
     );
 
-    state.customers = customersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-    state.materials = materialsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-    state.transactions = transactionsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    state.customers = sortCustomersByName(
+      customersSnap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() })),
+    );
+    state.materials = materialsSnap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
+    state.transactions = transactionsSnap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
   } catch (error) {
     console.error("loadData error:", error);
     toast(firestoreErrorMessage(error));
@@ -391,6 +508,7 @@ function renderAll() {
   renderSelects();
   renderStats();
   renderLedger();
+  renderNotifications();
   if (window.lucide) window.lucide.createIcons();
 }
 
@@ -403,9 +521,11 @@ function renderStats() {
 
 function renderCustomers() {
   const search = state.search.trim().toLowerCase();
-  const rows = state.customers.filter((customer) => {
-    return `${customer.name} ${customer.phone}`.toLowerCase().includes(search);
-  });
+  const rows = sortCustomersByName(
+    state.customers.filter((customer) => {
+      return `${customer.name} ${customer.phone}`.toLowerCase().includes(search);
+    }),
+  );
 
   els.customersTable.innerHTML = rows
     .map((customer) => {
@@ -418,6 +538,7 @@ function renderCustomers() {
           <td data-label="رقم الهاتف">${customer.phone}</td>
           <td data-label="آخر مادة">${lastTransaction?.materials?.join("، ") || customer.item || "-"}</td>
           <td data-label="تاريخ الدين">${dateText(customer.createdAt)}</td>
+          <td data-label="موعد التسديد">${dueDateCellHtml(customer)}</td>
           <td data-label="المبلغ الحالي" class="${amountClass}">${money(total)}</td>
           <td data-label="إجراءات">
             <div class="row-actions">
@@ -521,7 +642,7 @@ async function deleteMaterial(materialId) {
 }
 
 function renderSelects() {
-  const customerOptions = state.customers
+  const customerOptions = sortCustomersByName(state.customers)
     .map((customer) => `<option value="${customer.id}">${customer.name} - ${customer.phone}</option>`)
     .join("");
 
@@ -549,6 +670,15 @@ function renderLedger() {
   els.ledgerTotal.textContent = `${money(total)} د.ع`;
   els.ledgerTotal.className = total < 0 ? "amount-negative" : "amount-positive";
 
+  if (customer.dueDate) {
+    els.ledgerDueBanner.classList.remove("hidden");
+    els.ledgerDueDate.textContent = dateText(customer.dueDate);
+    const overdue = isDueDateOverdue(customer.dueDate) && total > 0;
+    els.ledgerDueBanner.classList.toggle("overdue", overdue);
+  } else {
+    els.ledgerDueBanner.classList.add("hidden");
+  }
+
   els.ledgerTable.innerHTML = transactions
     .map((item) => {
       const amountClass = item.amount < 0 ? "amount-negative" : "amount-positive";
@@ -558,6 +688,7 @@ function renderLedger() {
           <td data-label="نوع الدين">${item.type}</td>
           <td data-label="المواد">${item.materials?.join("، ") || "-"}</td>
           <td data-label="المبلغ" class="${amountClass}">${money(item.amount)}</td>
+          <td data-label="موعد التسديد">${item.dueDate ? dateText(item.dueDate) : "-"}</td>
           <td data-label="ملاحظة">${item.note || "-"}</td>
         </tr>
       `;
@@ -589,9 +720,19 @@ function closeModal(id) {
 }
 
 function openLedger(customerId) {
+  const customer = state.customers.find((item) => item.id === customerId);
   state.activeCustomerId = customerId;
   renderLedger();
   updateMaterialsFieldHint(els.ledgerAccountForm, els.ledgerMaterialsHint);
+
+  const dueInput = els.ledgerAccountForm.querySelector('[name="dueDate"]');
+  if (dueInput && customer?.dueDate) {
+    const due = parseDueDate(customer.dueDate);
+    if (due) {
+      dueInput.value = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, "0")}-${String(due.getDate()).padStart(2, "0")}`;
+    }
+  }
+
   openModal(els.ledgerModal);
 }
 
@@ -608,16 +749,28 @@ function openPaymentModal(customerId) {
   openModal(els.paymentModal);
 }
 
-async function createTransaction({ customerId, amount, isCredit, materials, note = "" }) {
+async function createTransaction({ customerId, amount, isCredit, materials, note = "", dueDate = "" }) {
   const numericAmount = Math.abs(Number(amount || 0));
   const signedAmount = isCredit ? -numericAmount : numericAmount;
-  return addRecord("transactions", {
+  const payload = {
     customerId,
     amount: signedAmount,
     type: isCredit ? "له" : "عليه",
     materials: materials || [],
     note,
-  });
+  };
+
+  if (dueDate && !isCredit) {
+    payload.dueDate = dueDate;
+  }
+
+  const saved = await addRecord("transactions", payload);
+
+  if (saved && dueDate && !isCredit) {
+    await syncCustomerDueDate(customerId, dueDate);
+  }
+
+  return saved;
 }
 
 async function deleteCustomer(customerId) {
@@ -834,9 +987,26 @@ els.customerSearch.addEventListener("input", (event) => {
   renderCustomers();
 });
 
+els.themeToggleBtn.addEventListener("click", toggleTheme);
+els.notificationsBtn.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleNotificationsPanel();
+});
+els.closeNotificationsBtn.addEventListener("click", closeNotificationsPanel);
+
 document.addEventListener("click", (event) => {
   if (!event.target.closest("#fabStack")) {
     closeQuickMenu();
+  }
+
+  if (!event.target.closest(".notifications-wrap")) {
+    closeNotificationsPanel();
+  }
+
+  const notificationCustomerId = event.target.closest(".notification-item")?.dataset.openLedger;
+  if (notificationCustomerId) {
+    closeNotificationsPanel();
+    openLedger(notificationCustomerId);
   }
 
   const closeId = event.target.closest("[data-close]")?.dataset.close;
@@ -880,10 +1050,12 @@ els.customerForm.addEventListener("submit", async (event) => {
 
   try {
     const data = Object.fromEntries(new FormData(els.customerForm));
+    const dueDate = data.dueDate || "";
     const customerId = await addRecord("customers", {
-      name: data.name,
+      name: data.name.trim(),
       phone: data.phone,
       item: data.item,
+      dueDate: dueDate || null,
     });
 
     if (customerId) {
@@ -893,6 +1065,7 @@ els.customerForm.addEventListener("submit", async (event) => {
         isCredit: false,
         materials: [data.item],
         note: "دين أولي",
+        dueDate,
       });
 
       if (saved) {
@@ -921,12 +1094,14 @@ els.accountForm.addEventListener("submit", async (event) => {
 
   try {
     const formData = new FormData(els.accountForm);
+    const isCredit = formDirection(els.accountForm);
     const saved = await createTransaction({
       customerId: formData.get("customerId"),
       amount: formData.get("amount"),
-      isCredit: formDirection(els.accountForm),
+      isCredit,
       materials,
       note: formData.get("note"),
+      dueDate: isCredit ? "" : formData.get("dueDate"),
     });
 
     if (saved) {
@@ -950,11 +1125,13 @@ els.ledgerAccountForm.addEventListener("submit", async (event) => {
 
   try {
     const formData = new FormData(els.ledgerAccountForm);
+    const isCredit = formDirection(els.ledgerAccountForm);
     const saved = await createTransaction({
       customerId: state.activeCustomerId,
       amount: formData.get("amount"),
-      isCredit: formDirection(els.ledgerAccountForm),
+      isCredit,
       materials,
+      dueDate: isCredit ? "" : formData.get("dueDate"),
     });
 
     if (saved) {
@@ -1002,6 +1179,7 @@ els.materialForm.addEventListener("submit", async (event) => {
 els.whatsappBtn.addEventListener("click", openWhatsApp);
 els.pdfBtn.addEventListener("click", downloadPdf);
 initCustomerMaterialSelect();
+initTheme();
 
 await initFirebase();
 await loadData();
