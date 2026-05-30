@@ -1,0 +1,1009 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import {
+  initializeFirestore,
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  orderBy,
+  serverTimestamp,
+  where,
+  writeBatch,
+  doc,
+  updateDoc,
+  deleteDoc,
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+const FIRESTORE_TIMEOUT_MS = 20000;
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBeibFCHWV-kO_a7XkremPuKsw9Z_Ep6xg",
+  authDomain: "sysdep-7d210.firebaseapp.com",
+  projectId: "sysdep-7d210",
+  storageBucket: "sysdep-7d210.firebasestorage.app",
+  messagingSenderId: "1068148482018",
+  appId: "1:1068148482018:web:ff50ed7199f7b77a65e3bb",
+  measurementId: "G-T34127WLJ2",
+};
+
+const state = {
+  db: null,
+  ready: false,
+  customers: [],
+  materials: [],
+  transactions: [],
+  activeCustomerId: null,
+  paymentCustomerId: null,
+  editingMaterialId: null,
+  search: "",
+};
+
+const els = {
+  pageTitle: document.querySelector("#pageTitle"),
+  firebaseNote: document.querySelector("#firebaseNote"),
+  quickMenuBtn: document.querySelector("#quickMenuBtn"),
+  quickMenu: document.querySelector("#quickMenu"),
+  fabStack: document.querySelector("#fabStack"),
+  openCustomerModal: document.querySelector("#openCustomerModal"),
+  openAccountModal: document.querySelector("#openAccountModal"),
+  refreshBtn: document.querySelector("#refreshBtn"),
+  customerModal: document.querySelector("#customerModal"),
+  accountModal: document.querySelector("#accountModal"),
+  paymentModal: document.querySelector("#paymentModal"),
+  paymentForm: document.querySelector("#paymentForm"),
+  paymentCustomerName: document.querySelector("#paymentCustomerName"),
+  paymentCurrentTotal: document.querySelector("#paymentCurrentTotal"),
+  ledgerModal: document.querySelector("#ledgerModal"),
+  customerForm: document.querySelector("#customerForm"),
+  accountForm: document.querySelector("#accountForm"),
+  materialForm: document.querySelector("#materialForm"),
+  materialFormTitle: document.querySelector("#materialFormTitle"),
+  materialSubmitBtn: document.querySelector("#materialSubmitBtn"),
+  materialCancelEditBtn: document.querySelector("#materialCancelEditBtn"),
+  ledgerAccountForm: document.querySelector("#ledgerAccountForm"),
+  customersTable: document.querySelector("#customersTable"),
+  materialsList: document.querySelector("#materialsList"),
+  ledgerTable: document.querySelector("#ledgerTable"),
+  customersEmpty: document.querySelector("#customersEmpty"),
+  materialsEmpty: document.querySelector("#materialsEmpty"),
+  ledgerEmpty: document.querySelector("#ledgerEmpty"),
+  globalTotal: document.querySelector("#globalTotal"),
+  customersCount: document.querySelector("#customersCount"),
+  materialsCount: document.querySelector("#materialsCount"),
+  accountCustomerSelect: document.querySelector("#accountCustomerSelect"),
+  accountMaterialsSelect: document.querySelector("#accountMaterialsSelect"),
+  accountMaterialsHint: document.querySelector("#accountMaterialsHint"),
+  ledgerMaterialsSelect: document.querySelector("#ledgerMaterialsSelect"),
+  ledgerMaterialsHint: document.querySelector("#ledgerMaterialsHint"),
+  ledgerCustomerName: document.querySelector("#ledgerCustomerName"),
+  ledgerCustomerPhone: document.querySelector("#ledgerCustomerPhone"),
+  ledgerTotal: document.querySelector("#ledgerTotal"),
+  customerSearch: document.querySelector("#customerSearch"),
+  customerMaterialSelect: document.querySelector("#customerMaterialSelect"),
+  customerMaterialValue: document.querySelector("#customerMaterialValue"),
+  customerMaterialInput: document.querySelector("#customerMaterialInput"),
+  customerMaterialOptions: document.querySelector("#customerMaterialOptions"),
+  whatsappBtn: document.querySelector("#whatsappBtn"),
+  pdfBtn: document.querySelector("#pdfBtn"),
+  toast: document.querySelector("#toast"),
+};
+
+function money(value) {
+  return Number(value || 0).toLocaleString("ar-IQ", {
+    maximumFractionDigits: 2,
+  });
+}
+
+function dateText(value) {
+  if (!value) return new Date().toLocaleDateString("ar-IQ");
+  if (value.toDate) return value.toDate().toLocaleDateString("ar-IQ");
+  return new Date(value).toLocaleDateString("ar-IQ");
+}
+
+function toast(message) {
+  els.toast.textContent = message;
+  els.toast.classList.add("show");
+  window.setTimeout(() => els.toast.classList.remove("show"), 2800);
+}
+
+function setFormLoading(form, loading, loadingText = "جاري الحفظ...") {
+  const submitButton = form.querySelector('button[type="submit"]');
+  if (!submitButton) return;
+
+  if (loading) {
+    submitButton.dataset.originalHtml = submitButton.innerHTML;
+    submitButton.disabled = true;
+    submitButton.innerHTML = loadingText;
+  } else {
+    submitButton.disabled = false;
+    if (submitButton.dataset.originalHtml) {
+      submitButton.innerHTML = submitButton.dataset.originalHtml;
+      delete submitButton.dataset.originalHtml;
+    }
+  }
+}
+
+function isFirebaseConfigured() {
+  return !Object.values(firebaseConfig).some((value) => String(value).includes("PUT_YOUR"));
+}
+
+function firestoreErrorMessage(error) {
+  const code = error?.code || "";
+
+  if (code === "permission-denied") {
+    return "رفض Firestore الحفظ. انشر ملف firestore.rules من Firebase Console.";
+  }
+
+  if (code === "not-found") {
+    return "قاعدة Firestore غير موجودة. أنشئ Firestore Database من Firebase Console.";
+  }
+
+  if (code === "unavailable" || /network|offline|connection|certificate|timeout/i.test(error?.message || "")) {
+    return "تعذر الاتصال بـ Firestore. تحقق من الإنترنت ثم أعد المحاولة.";
+  }
+
+  return error?.message || "حدث خطأ غير متوقع أثناء الاتصال بـ Firestore.";
+}
+
+async function withTimeout(promise, ms = FIRESTORE_TIMEOUT_MS, message = "انتهت مهلة الاتصال بـ Firestore.") {
+  let timer;
+
+  const timeout = new Promise((_, reject) => {
+    timer = window.setTimeout(() => reject(new Error(message)), ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+async function initFirebase() {
+  if (!isFirebaseConfigured()) {
+    els.firebaseNote.classList.remove("hidden");
+    toast("Firebase غير مفعّل بعد. ضع إعدادات مشروعك داخل app.js.");
+    return;
+  }
+
+  try {
+    const app = initializeApp(firebaseConfig);
+    state.db = initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+    });
+    state.ready = true;
+    els.firebaseNote.classList.add("hidden");
+  } catch (error) {
+    console.error("Firebase initialization error:", error);
+    toast("");
+  }
+}
+
+async function addRecord(collectionName, payload) {
+  if (!state.ready) {
+    toast("الحفظ يحتاج إعداد Firebase أولًا.");
+    return false;
+  }
+
+  try {
+    const docRef = await withTimeout(
+      addDoc(collection(state.db, collectionName), {
+        ...payload,
+        createdAt: serverTimestamp(),
+      }),
+    );
+    return docRef.id;
+  } catch (error) {
+    console.error(`addRecord(${collectionName}) error:`, error);
+    toast(firestoreErrorMessage(error));
+    return false;
+  }
+}
+
+async function updateRecord(collectionName, id, payload) {
+  if (!state.ready) {
+    toast("التحديث يحتاج إعداد Firebase أولًا.");
+    return false;
+  }
+
+  try {
+    await withTimeout(
+      updateDoc(doc(state.db, collectionName, id), {
+        ...payload,
+        updatedAt: serverTimestamp(),
+      }),
+    );
+    return true;
+  } catch (error) {
+    console.error(`updateRecord(${collectionName}) error:`, error);
+    toast(firestoreErrorMessage(error));
+    return false;
+  }
+}
+
+async function loadData() {
+  if (!state.ready) {
+    renderAll();
+    return;
+  }
+
+  try {
+    const [customersSnap, materialsSnap, transactionsSnap] = await withTimeout(
+      Promise.all([
+        getDocs(query(collection(state.db, "customers"), orderBy("createdAt", "desc"))),
+        getDocs(query(collection(state.db, "materials"), orderBy("createdAt", "desc"))),
+        getDocs(query(collection(state.db, "transactions"), orderBy("createdAt", "asc"))),
+      ]),
+    );
+
+    state.customers = customersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    state.materials = materialsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    state.transactions = transactionsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.error("loadData error:", error);
+    toast(firestoreErrorMessage(error));
+  }
+
+  renderAll();
+}
+
+function customerTransactions(customerId) {
+  return state.transactions.filter((item) => item.customerId === customerId);
+}
+
+function customerTotal(customerId) {
+  return customerTransactions(customerId).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+}
+
+function selectedMaterialNames(selectElement) {
+  return Array.from(selectElement.selectedOptions).map((option) => option.textContent.trim());
+}
+
+function transactionMaterialsForSave(form, selectElement) {
+  const isCredit = formDirection(form);
+  const materials = selectedMaterialNames(selectElement);
+
+  if (isCredit) {
+    return materials;
+  }
+
+  if (!materials.length) {
+    toast('يرجى اختيار مادة واحدة على الأقل لدين "عليه".');
+    return null;
+  }
+
+  return materials;
+}
+
+function updateMaterialsFieldHint(form, hintElement) {
+  if (!hintElement) return;
+
+  const isCredit = formDirection(form);
+  hintElement.textContent = isCredit
+    ? 'اختيار المواد اختياري عند "له".'
+    : 'اختيار المواد مطلوب عند "عليه".';
+}
+
+function materialOptionLabel(material) {
+  return `${material.name} - ${money(material.price)} د.ع`;
+}
+
+function closeCustomerMaterialSelect() {
+  els.customerMaterialOptions.classList.add("hidden");
+}
+
+function resetCustomerMaterialSelect() {
+  els.customerMaterialValue.value = "";
+  els.customerMaterialInput.value = "";
+  closeCustomerMaterialSelect();
+}
+
+function selectCustomerMaterial(material) {
+  els.customerMaterialValue.value = material.name;
+  els.customerMaterialInput.value = materialOptionLabel(material);
+  closeCustomerMaterialSelect();
+}
+
+function syncCustomerMaterialFromInput() {
+  const query = els.customerMaterialInput.value.trim().toLowerCase();
+  if (!query) {
+    els.customerMaterialValue.value = "";
+    return false;
+  }
+
+  const match = state.materials.find((material) => {
+    const label = materialOptionLabel(material).toLowerCase();
+    return label === query || material.name.toLowerCase() === query;
+  });
+
+  if (match) {
+    selectCustomerMaterial(match);
+    return true;
+  }
+
+  els.customerMaterialValue.value = "";
+  return false;
+}
+
+function renderCustomerMaterialSelect(filter = "") {
+  const search = filter.trim().toLowerCase();
+  const filtered = state.materials.filter((material) => {
+    return `${material.name} ${material.price}`.toLowerCase().includes(search);
+  });
+
+  els.customerMaterialOptions.innerHTML = filtered.length
+    ? filtered
+        .map(
+          (material) => `
+            <li
+              class="searchable-select-option"
+              role="option"
+              data-material-id="${material.id}"
+            >
+              ${materialOptionLabel(material)}
+            </li>
+          `,
+        )
+        .join("")
+    : `<li class="searchable-select-empty">لا توجد مواد مطابقة</li>`;
+}
+
+function openCustomerMaterialSelect() {
+  renderCustomerMaterialSelect(els.customerMaterialInput.value);
+  els.customerMaterialOptions.classList.remove("hidden");
+}
+
+function initCustomerMaterialSelect() {
+  els.customerMaterialInput.addEventListener("focus", openCustomerMaterialSelect);
+  els.customerMaterialInput.addEventListener("input", () => {
+    els.customerMaterialValue.value = "";
+    openCustomerMaterialSelect();
+  });
+  els.customerMaterialInput.addEventListener("blur", () => {
+    window.setTimeout(() => {
+      syncCustomerMaterialFromInput();
+      closeCustomerMaterialSelect();
+    }, 120);
+  });
+
+  els.customerMaterialOptions.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+
+  els.customerMaterialOptions.addEventListener("click", (event) => {
+    const option = event.target.closest("[data-material-id]");
+    if (!option) return;
+
+    const material = state.materials.find((item) => item.id === option.dataset.materialId);
+    if (material) selectCustomerMaterial(material);
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!els.customerMaterialSelect.contains(event.target)) {
+      closeCustomerMaterialSelect();
+    }
+  });
+}
+
+function renderAll() {
+  renderCustomers();
+  renderMaterials();
+  renderSelects();
+  renderStats();
+  renderLedger();
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function renderStats() {
+  const total = state.customers.reduce((sum, customer) => sum + customerTotal(customer.id), 0);
+  els.globalTotal.textContent = money(total);
+  els.customersCount.textContent = state.customers.length;
+  els.materialsCount.textContent = state.materials.length;
+}
+
+function renderCustomers() {
+  const search = state.search.trim().toLowerCase();
+  const rows = state.customers.filter((customer) => {
+    return `${customer.name} ${customer.phone}`.toLowerCase().includes(search);
+  });
+
+  els.customersTable.innerHTML = rows
+    .map((customer) => {
+      const total = customerTotal(customer.id);
+      const lastTransaction = customerTransactions(customer.id).at(-1);
+      const amountClass = total < 0 ? "amount-negative" : "amount-positive";
+      return `
+        <tr>
+          <td data-label="اسم العميل">${customer.name}</td>
+          <td data-label="رقم الهاتف">${customer.phone}</td>
+          <td data-label="آخر مادة">${lastTransaction?.materials?.join("، ") || customer.item || "-"}</td>
+          <td data-label="تاريخ الدين">${dateText(customer.createdAt)}</td>
+          <td data-label="المبلغ الحالي" class="${amountClass}">${money(total)}</td>
+          <td data-label="إجراءات">
+            <div class="row-actions">
+              <button class="ghost-btn pay-btn" data-pay-customer="${customer.id}">
+                <i data-lucide="wallet"></i>
+                تسديد الديون
+              </button>
+              <button class="ghost-btn" data-open-ledger="${customer.id}">
+                <i data-lucide="book-open"></i>
+                إضافة حساب
+              </button>
+              <button class="ghost-btn danger-btn" data-delete-customer="${customer.id}">
+                <i data-lucide="trash-2"></i>
+                حذف
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  els.customersEmpty.classList.toggle("hidden", rows.length > 0);
+}
+
+function resetMaterialForm() {
+  state.editingMaterialId = null;
+  els.materialForm.reset();
+  els.materialFormTitle.textContent = "إضافة مادة";
+  els.materialSubmitBtn.innerHTML = '<i data-lucide="save"></i> حفظ المادة';
+  els.materialCancelEditBtn.classList.add("hidden");
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function openMaterialEdit(materialId) {
+  const material = state.materials.find((item) => item.id === materialId);
+  if (!material) return;
+
+  state.editingMaterialId = materialId;
+  els.materialForm.name.value = material.name;
+  els.materialForm.price.value = material.price;
+  els.materialFormTitle.textContent = "تعديل مادة";
+  els.materialSubmitBtn.innerHTML = '<i data-lucide="save"></i> حفظ التعديلات';
+  els.materialCancelEditBtn.classList.remove("hidden");
+  els.materialForm.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function renderMaterials() {
+  els.materialsList.innerHTML = state.materials
+    .map(
+      (material) => `
+        <li class="material-item">
+          <div class="material-info">
+            <strong>${material.name}</strong>
+            <span>${money(material.price)} د.ع</span>
+          </div>
+          <div class="row-actions">
+            <button class="ghost-btn" data-edit-material="${material.id}">
+              <i data-lucide="pencil"></i>
+              تعديل
+            </button>
+            <button class="ghost-btn danger-btn" data-delete-material="${material.id}">
+              <i data-lucide="trash-2"></i>
+              حذف
+            </button>
+          </div>
+        </li>
+      `,
+    )
+    .join("");
+  els.materialsEmpty.classList.toggle("hidden", state.materials.length > 0);
+}
+
+async function deleteMaterial(materialId) {
+  if (!state.ready) {
+    toast("الحذف يحتاج إعداد Firebase أولًا.");
+    return;
+  }
+
+  const material = state.materials.find((item) => item.id === materialId);
+  if (!material) return;
+
+  if (!window.confirm(`هل أنت متأكد أنك تريد حذف مادة "${material.name}"؟`)) {
+    return;
+  }
+
+  try {
+    await withTimeout(deleteDoc(doc(state.db, "materials", materialId)));
+
+    if (state.editingMaterialId === materialId) {
+      resetMaterialForm();
+    }
+
+    await loadData();
+    toast("تم حذف المادة.");
+  } catch (error) {
+    console.error("deleteMaterial error:", error);
+    toast(firestoreErrorMessage(error));
+  }
+}
+
+function renderSelects() {
+  const customerOptions = state.customers
+    .map((customer) => `<option value="${customer.id}">${customer.name} - ${customer.phone}</option>`)
+    .join("");
+
+  const materialOptions = state.materials
+    .map((material) => `<option value="${material.id}">${material.name} - ${money(material.price)}</option>`)
+    .join("");
+
+  els.accountCustomerSelect.innerHTML = customerOptions;
+  els.accountMaterialsSelect.innerHTML = materialOptions;
+  els.ledgerMaterialsSelect.innerHTML = materialOptions;
+
+  if (!els.customerMaterialOptions.classList.contains("hidden")) {
+    renderCustomerMaterialSelect(els.customerMaterialInput.value);
+  }
+}
+
+function renderLedger() {
+  const customer = state.customers.find((item) => item.id === state.activeCustomerId);
+  if (!customer) return;
+
+  const transactions = customerTransactions(customer.id);
+  const total = customerTotal(customer.id);
+  els.ledgerCustomerName.textContent = customer.name;
+  els.ledgerCustomerPhone.textContent = customer.phone;
+  els.ledgerTotal.textContent = `${money(total)} د.ع`;
+  els.ledgerTotal.className = total < 0 ? "amount-negative" : "amount-positive";
+
+  els.ledgerTable.innerHTML = transactions
+    .map((item) => {
+      const amountClass = item.amount < 0 ? "amount-negative" : "amount-positive";
+      return `
+        <tr>
+          <td data-label="التاريخ">${dateText(item.createdAt)}</td>
+          <td data-label="نوع الدين">${item.type}</td>
+          <td data-label="المواد">${item.materials?.join("، ") || "-"}</td>
+          <td data-label="المبلغ" class="${amountClass}">${money(item.amount)}</td>
+          <td data-label="ملاحظة">${item.note || "-"}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  els.ledgerEmpty.classList.toggle("hidden", transactions.length > 0);
+}
+
+function closeQuickMenu() {
+  els.quickMenu.classList.add("hidden");
+  els.quickMenuBtn.classList.remove("open");
+}
+
+function updateFabVisibility(pageId = document.querySelector(".page.active")?.id) {
+  const showFab = pageId === "dailyPage";
+  els.fabStack.classList.toggle("hidden", !showFab);
+  if (!showFab) closeQuickMenu();
+}
+
+function openModal(modal) {
+  closeQuickMenu();
+  modal.showModal();
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function closeModal(id) {
+  document.querySelector(`#${id}`).close();
+}
+
+function openLedger(customerId) {
+  state.activeCustomerId = customerId;
+  renderLedger();
+  updateMaterialsFieldHint(els.ledgerAccountForm, els.ledgerMaterialsHint);
+  openModal(els.ledgerModal);
+}
+
+function openPaymentModal(customerId) {
+  const customer = state.customers.find((item) => item.id === customerId);
+  if (!customer) return;
+
+  const total = customerTotal(customerId);
+  state.paymentCustomerId = customerId;
+  els.paymentCustomerName.textContent = `${customer.name} - ${customer.phone}`;
+  els.paymentCurrentTotal.textContent = `${money(total)} د.ع`;
+  els.paymentCurrentTotal.className = total < 0 ? "amount-negative" : "amount-positive";
+  els.paymentForm.reset();
+  openModal(els.paymentModal);
+}
+
+async function createTransaction({ customerId, amount, isCredit, materials, note = "" }) {
+  const numericAmount = Math.abs(Number(amount || 0));
+  const signedAmount = isCredit ? -numericAmount : numericAmount;
+  return addRecord("transactions", {
+    customerId,
+    amount: signedAmount,
+    type: isCredit ? "له" : "عليه",
+    materials: materials || [],
+    note,
+  });
+}
+
+async function deleteCustomer(customerId) {
+  if (!state.ready) {
+    toast("الحذف يحتاج إعداد Firebase أولًا.");
+    return;
+  }
+
+  if (!window.confirm("هل أنت متأكد أنك تريد حذف هذا العميل وجميع حساباته؟")) {
+    return;
+  }
+
+  try {
+    const customerRef = doc(state.db, "customers", customerId);
+    const transactionsQuery = query(collection(state.db, "transactions"), where("customerId", "==", customerId));
+    const transactionsSnap = await withTimeout(getDocs(transactionsQuery));
+    const batch = writeBatch(state.db);
+    transactionsSnap.docs.forEach((transactionDoc) => {
+      batch.delete(doc(state.db, "transactions", transactionDoc.id));
+    });
+    batch.delete(customerRef);
+    await withTimeout(batch.commit());
+
+    if (state.activeCustomerId === customerId) {
+      closeModal("ledgerModal");
+      state.activeCustomerId = null;
+    }
+
+    if (state.paymentCustomerId === customerId) {
+      closeModal("paymentModal");
+      state.paymentCustomerId = null;
+    }
+
+    await loadData();
+    toast("تم حذف العميل وجميع سجلاته.");
+  } catch (error) {
+    console.error("deleteCustomer error:", error);
+    toast(firestoreErrorMessage(error));
+  }
+}
+
+function buildInvoiceElement(customer, transactions, total) {
+  const invoice = document.createElement("div");
+  invoice.className = "invoice";
+  invoice.innerHTML = `
+    <h1>فاتورة حساب</h1>
+    <p>ادارة الديون</p>
+    <div class="invoice-meta">
+      <div>
+        <strong>اسم العميل:</strong> ${customer.name}<br />
+        <strong>رقم الهاتف:</strong> ${customer.phone}
+      </div>
+      <div>
+        <strong>تاريخ الطباعة:</strong> ${new Date().toLocaleDateString("ar-IQ")}
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>التاريخ</th>
+          <th>نوع الدين</th>
+          <th>المواد</th>
+          <th>المبلغ</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${transactions
+          .map(
+            (item) => `
+              <tr>
+                <td>${dateText(item.createdAt)}</td>
+                <td>${item.type}</td>
+                <td>${item.materials?.join("، ") || "-"}</td>
+                <td>${money(item.amount)} د.ع</td>
+              </tr>
+            `,
+          )
+          .join("")}
+      </tbody>
+    </table>
+    <div class="invoice-total">المجموع الكلي: ${money(total)} د.ع</div>
+  `;
+  return invoice;
+}
+
+async function downloadPdf() {
+  const customer = state.customers.find((item) => item.id === state.activeCustomerId);
+  if (!customer) return;
+
+  const transactions = customerTransactions(customer.id);
+  const total = customerTotal(customer.id);
+  const invoice = buildInvoiceElement(customer, transactions, total);
+  document.body.appendChild(invoice);
+
+  await window.html2pdf()
+    .set({
+      margin: 8,
+      filename: `${customer.name}.pdf`,
+      image: { type: "jpeg", quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+    })
+    .from(invoice)
+    .save();
+
+  invoice.remove();
+}
+
+function openWhatsApp() {
+  const customer = state.customers.find((item) => item.id === state.activeCustomerId);
+  if (!customer) return;
+
+  const total = money(customerTotal(customer.id));
+  const message = encodeURIComponent(`مرحبا ${customer.name}، مجموع الحساب الحالي هو ${total} د.ع`);
+  const phone = String(customer.phone || "").replace(/[^\d]/g, "");
+  window.open(`https://wa.me/${phone}?text=${message}`, "_blank", "noopener");
+}
+
+document.querySelectorAll(".nav-tab").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll(".nav-tab").forEach((tab) => tab.classList.remove("active"));
+    document.querySelectorAll(".page").forEach((page) => page.classList.remove("active"));
+    button.classList.add("active");
+    document.querySelector(`#${button.dataset.page}`).classList.add("active");
+    els.pageTitle.textContent = button.textContent.trim();
+    updateFabVisibility(button.dataset.page);
+  });
+});
+
+els.quickMenuBtn.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const willOpen = els.quickMenu.classList.contains("hidden");
+  closeQuickMenu();
+  if (willOpen) {
+    els.quickMenu.classList.remove("hidden");
+    els.quickMenuBtn.classList.add("open");
+    if (window.lucide) window.lucide.createIcons();
+  }
+});
+
+els.openCustomerModal.addEventListener("click", () => {
+  closeQuickMenu();
+  resetCustomerMaterialSelect();
+  renderCustomerMaterialSelect();
+  openModal(els.customerModal);
+});
+els.openAccountModal.addEventListener("click", () => {
+  closeQuickMenu();
+  updateMaterialsFieldHint(els.accountForm, els.accountMaterialsHint);
+  openModal(els.accountModal);
+});
+
+els.accountForm.addEventListener("change", (event) => {
+  if (event.target.name === "direction") {
+    updateMaterialsFieldHint(els.accountForm, els.accountMaterialsHint);
+  }
+});
+
+els.paymentForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  if (!state.paymentCustomerId) return;
+
+  const formData = new FormData(els.paymentForm);
+  const amount = Number(formData.get("amount") || 0);
+  const currentTotal = customerTotal(state.paymentCustomerId);
+
+  if (amount <= 0) {
+    toast("أدخل مبلغ تسديد أكبر من صفر.");
+    return;
+  }
+
+  if (currentTotal <= 0) {
+    toast("لا يوجد دين مستحق على هذا العميل.");
+    return;
+  }
+
+  setFormLoading(els.paymentForm, true, "جاري التسديد...");
+
+  try {
+    const note = String(formData.get("note") || "").trim();
+    const saved = await createTransaction({
+      customerId: state.paymentCustomerId,
+      amount,
+      isCredit: true,
+      materials: [],
+      note: note || "تسديد دين",
+    });
+
+    if (saved) {
+      await loadData();
+      els.paymentForm.reset();
+      els.paymentModal.close();
+      state.paymentCustomerId = null;
+      toast("تم تسديد المبلغ وخصمه من الدين.");
+    }
+  } catch (error) {
+    console.error("paymentForm error:", error);
+    toast(firestoreErrorMessage(error));
+  } finally {
+    setFormLoading(els.paymentForm, false);
+  }
+});
+
+els.ledgerAccountForm.addEventListener("change", (event) => {
+  if (event.target.name === "direction") {
+    updateMaterialsFieldHint(els.ledgerAccountForm, els.ledgerMaterialsHint);
+  }
+});
+
+els.refreshBtn.addEventListener("click", loadData);
+els.customerSearch.addEventListener("input", (event) => {
+  state.search = event.target.value;
+  renderCustomers();
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest("#fabStack")) {
+    closeQuickMenu();
+  }
+
+  const closeId = event.target.closest("[data-close]")?.dataset.close;
+  if (closeId) closeModal(closeId);
+
+  const customerId = event.target.closest("[data-open-ledger]")?.dataset.openLedger;
+  if (customerId) openLedger(customerId);
+
+  const payCustomerId = event.target.closest("[data-pay-customer]")?.dataset.payCustomer;
+  if (payCustomerId) openPaymentModal(payCustomerId);
+
+  const deleteCustomerId = event.target.closest("[data-delete-customer]")?.dataset.deleteCustomer;
+  if (deleteCustomerId) deleteCustomer(deleteCustomerId);
+
+  const editMaterialId = event.target.closest("[data-edit-material]")?.dataset.editMaterial;
+  if (editMaterialId) openMaterialEdit(editMaterialId);
+
+  const deleteMaterialId = event.target.closest("[data-delete-material]")?.dataset.deleteMaterial;
+  if (deleteMaterialId) deleteMaterial(deleteMaterialId);
+});
+
+function formDirection(form) {
+  return form.querySelector('[name="direction"]:checked')?.value === "credit";
+}
+
+els.customerForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  if (!state.materials.length) {
+    toast("أضف موادًا أولًا من صفحة المواد.");
+    return;
+  }
+
+  if (!syncCustomerMaterialFromInput()) {
+    toast("اختر مادة من القائمة.");
+    els.customerMaterialInput.focus();
+    return;
+  }
+
+  setFormLoading(els.customerForm, true);
+
+  try {
+    const data = Object.fromEntries(new FormData(els.customerForm));
+    const customerId = await addRecord("customers", {
+      name: data.name,
+      phone: data.phone,
+      item: data.item,
+    });
+
+    if (customerId) {
+      const saved = await createTransaction({
+        customerId,
+        amount: data.amount,
+        isCredit: false,
+        materials: [data.item],
+        note: "دين أولي",
+      });
+
+      if (saved) {
+        await loadData();
+        els.customerForm.reset();
+        resetCustomerMaterialSelect();
+        els.customerModal.close();
+        toast("تم حفظ العميل.");
+      }
+    }
+  } catch (error) {
+    console.error("customerForm error:", error);
+    toast(firestoreErrorMessage(error));
+  } finally {
+    setFormLoading(els.customerForm, false);
+  }
+});
+
+els.accountForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const materials = transactionMaterialsForSave(els.accountForm, els.accountMaterialsSelect);
+  if (materials === null) return;
+
+  setFormLoading(els.accountForm, true);
+
+  try {
+    const formData = new FormData(els.accountForm);
+    const saved = await createTransaction({
+      customerId: formData.get("customerId"),
+      amount: formData.get("amount"),
+      isCredit: formDirection(els.accountForm),
+      materials,
+      note: formData.get("note"),
+    });
+
+    if (saved) {
+      await loadData();
+      els.accountForm.reset();
+      els.accountModal.close();
+      toast("تم حفظ الحساب.");
+    }
+  } finally {
+    setFormLoading(els.accountForm, false);
+  }
+});
+
+els.ledgerAccountForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const materials = transactionMaterialsForSave(els.ledgerAccountForm, els.ledgerMaterialsSelect);
+  if (materials === null) return;
+
+  setFormLoading(els.ledgerAccountForm, true);
+
+  try {
+    const formData = new FormData(els.ledgerAccountForm);
+    const saved = await createTransaction({
+      customerId: state.activeCustomerId,
+      amount: formData.get("amount"),
+      isCredit: formDirection(els.ledgerAccountForm),
+      materials,
+    });
+
+    if (saved) {
+      await loadData();
+      els.ledgerAccountForm.reset();
+      toast("تمت إضافة الحساب إلى السجل.");
+    }
+  } finally {
+    setFormLoading(els.ledgerAccountForm, false);
+  }
+});
+
+els.materialCancelEditBtn.addEventListener("click", resetMaterialForm);
+
+els.materialForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  setFormLoading(els.materialForm, true);
+
+  try {
+    const data = Object.fromEntries(new FormData(els.materialForm));
+    const payload = {
+      name: data.name.trim(),
+      price: Number(data.price || 0),
+    };
+
+    const isEditing = Boolean(state.editingMaterialId);
+    let saved = false;
+
+    if (isEditing) {
+      saved = await updateRecord("materials", state.editingMaterialId, payload);
+    } else {
+      saved = Boolean(await addRecord("materials", payload));
+    }
+
+    if (saved) {
+      await loadData();
+      resetMaterialForm();
+      toast(isEditing ? "تم تحديث المادة." : "تم حفظ المادة.");
+    }
+  } finally {
+    setFormLoading(els.materialForm, false);
+  }
+});
+
+els.whatsappBtn.addEventListener("click", openWhatsApp);
+els.pdfBtn.addEventListener("click", downloadPdf);
+initCustomerMaterialSelect();
+
+await initFirebase();
+await loadData();
+updateFabVisibility();
+if (window.lucide) window.lucide.createIcons();

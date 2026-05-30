@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>ادارة الديون</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">د</div>
+          <div>
+            <h1>ادارة الديون</h1>
+            <p>حسابات العملاء والمواد</p>
+          </div>
+        </div>
+
+        <nav class="nav-tabs" aria-label="التنقل">
+          <button class="nav-tab active" data-page="dailyPage">
+            <i data-lucide="calendar-days"></i>
+            الحسابات اليومية
+          </button>
+          <button class="nav-tab" data-page="materialsPage">
+            <i data-lucide="package-plus"></i>
+            المواد
+          </button>
+        </nav>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div>
+          
+            <h2 id="pageTitle">الحسابات اليومية</h2>
+          </div>
+          <div class="topbar-actions">
+            <button class="ghost-btn" id="refreshBtn" title="تحديث">
+              <i data-lucide="refresh-cw"></i>
+            </button>
+            <div class="fab-stack" id="fabStack">
+              <div class="fab-menu hidden" id="quickMenu">
+                <button class="fab-action" id="openCustomerModal">
+                  <span>إضافة عميل</span>
+                  <i data-lucide="user-plus"></i>
+                </button>
+                <button class="fab-action" id="openAccountModal">
+                  <span>إضافة حساب</span>
+                  <i data-lucide="receipt-text"></i>
+                </button>
+              </div>
+              <button class="fab-main" id="quickMenuBtn" type="button" aria-label="إضافة">
+                <i data-lucide="plus"></i>
+                <span class="fab-main-label">إضافة</span>
+              </button>
+            </div>
+          </div>
+        </header>
+
+
+        <section class="page active" id="dailyPage">
+          <div class="stats-grid">
+            <article class="stat-card">
+              <span>إجمالي الديون</span>
+              <strong id="globalTotal">0</strong>
+            </article>
+            <article class="stat-card">
+              <span>عدد العملاء</span>
+              <strong id="customersCount">0</strong>
+            </article>
+            <article class="stat-card">
+              <span>عدد المواد</span>
+              <strong id="materialsCount">0</strong>
+            </article>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h3>جدول الحسابات اليومية</h3>
+              <div class="search-box">
+                <i data-lucide="search"></i>
+                <input id="customerSearch" type="search" placeholder="بحث عن عميل أو هاتف" />
+              </div>
+            </div>
+
+            <div class="table-wrap daily-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>اسم العميل</th>
+                    <th>رقم الهاتف</th>
+                    <th>آخر مادة</th>
+                    <th>تاريخ الدين</th>
+                    <th>المبلغ الحالي</th>
+                    <th>إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody id="customersTable"></tbody>
+              </table>
+            </div>
+            <div class="empty-state hidden" id="customersEmpty">لا توجد حسابات حتى الآن</div>
+          </div>
+        </section>
+
+        <section class="page" id="materialsPage">
+          <div class="split-layout">
+            <form class="panel form-panel" id="materialForm">
+              <div class="panel-header">
+                <h3 id="materialFormTitle">إضافة مادة</h3>
+              </div>
+              <label>
+                اسم المادة
+                <input name="name" required placeholder="مثال: سمنت" />
+              </label>
+              <label>
+                السعر
+                <input name="price" required type="number" min="0" step="0.01" placeholder="0" />
+              </label>
+              <div class="form-actions">
+                <button class="ghost-btn hidden" type="button" id="materialCancelEditBtn">إلغاء التعديل</button>
+                <button class="primary-btn full" type="submit" id="materialSubmitBtn">
+                  <i data-lucide="save"></i>
+                  حفظ المادة
+                </button>
+              </div>
+            </form>
+
+            <div class="panel">
+              <div class="panel-header">
+                <h3>قائمة المواد</h3>
+              </div>
+              <ul class="materials-list" id="materialsList"></ul>
+              <div class="empty-state hidden" id="materialsEmpty">لا توجد مواد مضافة</div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog class="modal" id="customerModal">
+      <form class="modal-card" id="customerForm">
+        <div class="modal-header">
+          <h3>إضافة عميل</h3>
+          <button class="icon-btn" value="cancel" type="button" data-close="customerModal">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <label>
+          اسم العميل
+          <input name="name" required placeholder="اسم العميل" />
+        </label>
+        <label>
+          رقم الهاتف
+          <input name="phone" required inputmode="tel" placeholder="07xxxxxxxxx" />
+        </label>
+        <label>
+          مبلغ الدين
+          <input name="amount" required type="number" step="0.01" placeholder="0" />
+        </label>
+        <label>
+          المادة
+          <div class="searchable-select" id="customerMaterialSelect">
+            <input type="hidden" name="item" id="customerMaterialValue" required />
+            <div class="searchable-select-field">
+              <i data-lucide="search"></i>
+              <input
+                type="text"
+                id="customerMaterialInput"
+                placeholder="ابحث عن مادة..."
+                autocomplete="off"
+                aria-autocomplete="list"
+                aria-controls="customerMaterialOptions"
+              />
+            </div>
+            <ul class="searchable-select-options hidden" id="customerMaterialOptions" role="listbox"></ul>
+          </div>
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-btn" type="button" data-close="customerModal">إلغاء</button>
+          <button class="primary-btn" type="submit">حفظ العميل</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="accountModal">
+      <form class="modal-card" id="accountForm">
+        <div class="modal-header">
+          <h3>إضافة حساب</h3>
+          <button class="icon-btn" value="cancel" type="button" data-close="accountModal">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <label>
+          العميل
+          <select name="customerId" required id="accountCustomerSelect"></select>
+        </label>
+        <div class="debt-direction">
+          <span>نوع الدين</span>
+          <label class="check-row">
+            <input type="radio" name="direction" value="debit" checked />
+            عليه
+          </label>
+          <label class="check-row">
+            <input type="radio" name="direction" value="credit" />
+            له
+          </label>
+          <small>يسجل "له" المبلغ بالسالب، و"عليه" بالموجب.</small>
+        </div>
+        <label>
+          المواد
+          <select name="materials" id="accountMaterialsSelect" multiple></select>
+          <small id="accountMaterialsHint">اختيار المواد مطلوب عند "عليه".</small>
+        </label>
+        <label>
+          مبلغ الحساب
+          <input name="amount" required type="number" step="0.01" placeholder="0" />
+        </label>
+        <label>
+          ملاحظة
+          <textarea name="note" rows="3" placeholder="اختياري"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-btn" type="button" data-close="accountModal">إلغاء</button>
+          <button class="primary-btn" type="submit">حفظ الحساب</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="paymentModal">
+      <form class="modal-card" id="paymentForm">
+        <div class="modal-header">
+          <div>
+            <h3>تسديد الديون</h3>
+            <p id="paymentCustomerName">اسم العميل</p>
+          </div>
+          <button class="icon-btn" type="button" data-close="paymentModal">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <div class="payment-summary">
+          <span>المبلغ الحالي للدين</span>
+          <strong id="paymentCurrentTotal">0</strong>
+        </div>
+
+        <label>
+          مبلغ التسديد
+          <input name="amount" required type="number" min="0.01" step="0.01" placeholder="0" />
+        </label>
+        <label>
+          ملاحظة
+          <textarea name="note" rows="2" placeholder="اختياري"></textarea>
+        </label>
+
+        <div class="modal-actions">
+          <button class="ghost-btn" type="button" data-close="paymentModal">إلغاء</button>
+          <button class="primary-btn" type="submit">تأكيد التسديد</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal wide" id="ledgerModal">
+      <section class="modal-card ledger-card">
+        <div class="modal-header">
+          <div>
+            <h3 id="ledgerCustomerName">سجل العميل</h3>
+            <p id="ledgerCustomerPhone"></p>
+          </div>
+          <button class="icon-btn" type="button" data-close="ledgerModal">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <div class="ledger-summary">
+          <div>
+            <span>المجموع الكلي للدين</span>
+            <strong id="ledgerTotal">0</strong>
+          </div>
+          <div class="ledger-tools">
+            <button class="icon-action whatsapp" id="whatsappBtn" title="إرسال واتساب">
+              <i data-lucide="send"></i>
+            </button>
+            <button class="icon-action pdf" id="pdfBtn" title="تنزيل PDF">
+              <i data-lucide="file-down"></i>
+            </button>
+          </div>
+        </div>
+
+        <form class="inline-account-form" id="ledgerAccountForm">
+          <label class="check-row">
+            <input type="radio" name="direction" value="debit" checked />
+            عليه
+          </label>
+          <label class="check-row">
+            <input type="radio" name="direction" value="credit" />
+            له
+          </label>
+          <div class="ledger-materials-field">
+            <select name="materials" id="ledgerMaterialsSelect" multiple></select>
+            <small id="ledgerMaterialsHint">اختيار المواد مطلوب عند "عليه".</small>
+          </div>
+          <input name="amount" type="number" step="0.01" required placeholder="المبلغ" />
+          <button class="primary-btn" type="submit">
+            <i data-lucide="plus"></i>
+            إضافة حساب
+          </button>
+        </form>
+
+        <div class="table-wrap responsive-table">
+          <table>
+            <thead>
+              <tr>
+                <th>التاريخ</th>
+                <th>نوع الدين</th>
+                <th>المواد</th>
+                <th>المبلغ</th>
+                <th>ملاحظة</th>
+              </tr>
+            </thead>
+            <tbody id="ledgerTable"></tbody>
+          </table>
+        </div>
+        <div class="empty-state hidden" id="ledgerEmpty">لا يوجد سجل لهذا العميل</div>
+      </section>
+    </dialog>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
