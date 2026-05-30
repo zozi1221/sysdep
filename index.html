@@ -42,20 +42,10 @@
             <h2 id="pageTitle">الحسابات اليومية</h2>
           </div>
           <div class="topbar-actions">
-            <div class="notifications-wrap">
-              <button class="ghost-btn icon-btn notifications-btn" id="notificationsBtn" type="button" title="التنبيهات">
-                <i data-lucide="bell"></i>
-                <span class="notifications-badge hidden" id="notificationsBadge">0</span>
-              </button>
-              <div class="notifications-panel hidden" id="notificationsPanel">
-                <div class="notifications-panel-header">
-                  <strong>تنبيهات التسديد</strong>
-                  <button class="ghost-btn small-btn" type="button" id="closeNotificationsBtn">إغلاق</button>
-                </div>
-                <ul class="notifications-list" id="notificationsList"></ul>
-                <p class="notifications-empty hidden" id="notificationsEmpty">لا توجد تنبيهات حالياً</p>
-              </div>
-            </div>
+            <button class="ghost-btn icon-btn notifications-btn" id="notificationsBtn" type="button" title="التنبيهات">
+              <i data-lucide="bell"></i>
+              <span class="notifications-badge hidden" id="notificationsBadge">0</span>
+            </button>
             <button class="ghost-btn icon-btn" id="themeToggleBtn" type="button" title="وضع ليلي / نهاري">
               <i data-lucide="moon" id="themeToggleIcon"></i>
             </button>
@@ -157,6 +147,19 @@
               <ul class="materials-list" id="materialsList"></ul>
               <div class="empty-state hidden" id="materialsEmpty">لا توجد مواد مضافة</div>
             </div>
+          </div>
+        </section>
+
+        <section class="page notifications-page" id="notificationsPage">
+          <div class="panel notifications-full-panel">
+            <div class="panel-header notifications-page-header">
+              <h3>تنبيهات التسديد</h3>
+              <button class="icon-btn ghost-btn" type="button" id="closeNotificationsBtn" title="إغلاق">
+                <i data-lucide="x"></i>
+              </button>
+            </div>
+            <ul class="notifications-list" id="notificationsList"></ul>
+            <p class="notifications-empty hidden" id="notificationsEmpty">لا توجد تنبيهات حالياً</p>
           </div>
         </section>
       </main>

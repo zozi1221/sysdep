@@ -38,6 +38,7 @@ const state = {
   search: "",
   theme: "light",
   notificationsOpen: false,
+  pageBeforeNotifications: "dailyPage",
 };
 
 const els = {
@@ -92,7 +93,7 @@ const els = {
   themeToggleIcon: document.querySelector("#themeToggleIcon"),
   notificationsBtn: document.querySelector("#notificationsBtn"),
   notificationsBadge: document.querySelector("#notificationsBadge"),
-  notificationsPanel: document.querySelector("#notificationsPanel"),
+  notificationsPage: document.querySelector("#notificationsPage"),
   notificationsList: document.querySelector("#notificationsList"),
   notificationsEmpty: document.querySelector("#notificationsEmpty"),
   closeNotificationsBtn: document.querySelector("#closeNotificationsBtn"),
@@ -179,15 +180,41 @@ function toggleTheme() {
   applyTheme(state.theme === "dark" ? "light" : "dark");
 }
 
-function closeNotificationsPanel() {
+const PAGE_TITLES = {
+  dailyPage: "الحسابات اليومية",
+  materialsPage: "المواد",
+};
+
+function closeNotificationsPage() {
+  if (!state.notificationsOpen) return;
   state.notificationsOpen = false;
-  els.notificationsPanel.classList.add("hidden");
+  els.notificationsPage.classList.remove("active");
+
+  const returnPageId = state.pageBeforeNotifications || "dailyPage";
+  const returnPage = document.querySelector(`#${returnPageId}`);
+  if (returnPage) returnPage.classList.add("active");
+
+  document.querySelectorAll(".nav-tab").forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.page === returnPageId);
+  });
+
+  els.pageTitle.textContent = PAGE_TITLES[returnPageId] || PAGE_TITLES.dailyPage;
+  updateFabVisibility(returnPageId);
 }
 
-function toggleNotificationsPanel() {
-  state.notificationsOpen = !state.notificationsOpen;
-  els.notificationsPanel.classList.toggle("hidden", !state.notificationsOpen);
-  if (state.notificationsOpen) renderNotifications();
+function openNotificationsPage() {
+  const activePage = document.querySelector(".page.active");
+  if (activePage?.id && activePage.id !== "notificationsPage") {
+    state.pageBeforeNotifications = activePage.id;
+  }
+
+  state.notificationsOpen = true;
+  document.querySelectorAll(".page").forEach((page) => page.classList.remove("active"));
+  els.notificationsPage.classList.add("active");
+  els.pageTitle.textContent = "تنبيهات التسديد";
+  updateFabVisibility("notificationsPage");
+  renderNotifications();
+  if (window.lucide) window.lucide.createIcons();
 }
 
 function renderNotifications() {
@@ -891,6 +918,7 @@ function openWhatsApp() {
 
 document.querySelectorAll(".nav-tab").forEach((button) => {
   button.addEventListener("click", () => {
+    closeNotificationsPage();
     document.querySelectorAll(".nav-tab").forEach((tab) => tab.classList.remove("active"));
     document.querySelectorAll(".page").forEach((page) => page.classList.remove("active"));
     button.classList.add("active");
@@ -988,24 +1016,23 @@ els.customerSearch.addEventListener("input", (event) => {
 });
 
 els.themeToggleBtn.addEventListener("click", toggleTheme);
-els.notificationsBtn.addEventListener("click", (event) => {
-  event.stopPropagation();
-  toggleNotificationsPanel();
+els.notificationsBtn.addEventListener("click", () => {
+  if (state.notificationsOpen) {
+    closeNotificationsPage();
+  } else {
+    openNotificationsPage();
+  }
 });
-els.closeNotificationsBtn.addEventListener("click", closeNotificationsPanel);
+els.closeNotificationsBtn.addEventListener("click", closeNotificationsPage);
 
 document.addEventListener("click", (event) => {
   if (!event.target.closest("#fabStack")) {
     closeQuickMenu();
   }
 
-  if (!event.target.closest(".notifications-wrap")) {
-    closeNotificationsPanel();
-  }
-
   const notificationCustomerId = event.target.closest(".notification-item")?.dataset.openLedger;
   if (notificationCustomerId) {
-    closeNotificationsPanel();
+    closeNotificationsPage();
     openLedger(notificationCustomerId);
   }
 
