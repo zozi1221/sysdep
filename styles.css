@@ -26,8 +26,8 @@
   --bg: #0f1613;
   --surface: #1a2420;
   --surface-2: #243029;
-  --text: #e8f0ec;
-  --muted: #9aab9f;
+  --text: #ffffff;
+  --muted: #b8c9c0;
   --line: #33443c;
   --primary: #2fa07f;
   --primary-strong: #248a6d;
@@ -37,13 +37,25 @@
   --warning-bg: #2a2618;
   --warning-border: #5c4f1f;
   --sidebar-bg: #0a100e;
-  --sidebar-text: #e8f0ec;
-  --sidebar-muted: #8fa396;
+  --sidebar-text: #ffffff;
+  --sidebar-muted: #b8c9c0;
   --shadow: 0 18px 45px rgba(0, 0, 0, 0.35);
   --pay-bg: #1a2e26;
   --pay-border: #2a5c48;
   --danger-bg: #2e1c1c;
   --danger-border: #5c3030;
+}
+
+[data-theme="dark"] .firebase-note {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: var(--warning);
+}
+
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
 }
 
 * {
@@ -110,6 +122,7 @@ button {
 
 .payment-summary strong {
   font-size: 24px;
+  color: var(--text);
 }
 
 .app-shell {
@@ -151,8 +164,15 @@ button {
   margin: 0;
 }
 
+.topbar h2,
+.panel h3,
+.modal h3 {
+  color: var(--text);
+}
+
 .brand h1 {
   font-size: 22px;
+  color: var(--sidebar-text);
 }
 
 .brand p {
@@ -395,6 +415,7 @@ button {
 .stat-card strong,
 .ledger-summary strong {
   font-size: 28px;
+  color: var(--text);
 }
 
 .panel {
@@ -541,6 +562,33 @@ button {
   border: 0;
   outline: 0;
   min-height: 42px;
+  background: transparent;
+  color: var(--text);
+}
+
+.customer-name-link {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-weight: 700;
+  text-align: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.customer-name-link:hover {
+  color: var(--primary-strong);
+}
+
+[data-theme="dark"] .customer-name-link {
+  color: #ffffff;
+}
+
+[data-theme="dark"] .customer-name-link:hover {
+  color: var(--primary);
 }
 
 .table-wrap {
@@ -559,6 +607,7 @@ td {
   border-bottom: 1px solid var(--line);
   text-align: right;
   white-space: nowrap;
+  color: var(--text);
 }
 
 th {
@@ -671,6 +720,7 @@ textarea:focus {
   min-height: 42px;
   padding: 10px 0;
   background: transparent;
+  color: var(--text);
 }
 
 .searchable-select-options {
@@ -706,6 +756,11 @@ textarea:focus {
   background: var(--surface-2);
 }
 
+.searchable-select-create {
+  color: var(--primary);
+  font-weight: 700;
+}
+
 .searchable-select-empty {
   color: var(--muted);
   text-align: center;
@@ -733,6 +788,10 @@ textarea:focus {
 .material-info {
   display: grid;
   gap: 4px;
+}
+
+.material-info strong {
+  color: var(--text);
 }
 
 .form-actions {
@@ -799,9 +858,19 @@ label small,
   gap: 8px;
 }
 
+.debt-direction > span {
+  color: var(--text);
+  font-weight: 700;
+}
+
 .ledger-materials-field {
   display: grid;
   gap: 6px;
+  min-width: 0;
+}
+
+.ledger-materials-field .searchable-select {
+  min-width: 0;
 }
 
 .check-row {
@@ -810,6 +879,7 @@ label small,
   width: fit-content;
   grid-template-columns: auto auto;
   gap: 8px;
+  color: var(--text);
 }
 
 .check-row input {
@@ -843,7 +913,7 @@ label small,
 
 .inline-account-form {
   display: grid;
-  grid-template-columns: auto minmax(160px, 1fr) 140px 150px auto;
+  grid-template-columns: auto minmax(180px, 1.4fr) 140px 150px auto;
   gap: 10px;
 }
 

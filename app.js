@@ -74,9 +74,13 @@ const els = {
   customersCount: document.querySelector("#customersCount"),
   materialsCount: document.querySelector("#materialsCount"),
   accountCustomerSelect: document.querySelector("#accountCustomerSelect"),
-  accountMaterialsSelect: document.querySelector("#accountMaterialsSelect"),
+  accountMaterialSelect: document.querySelector("#accountMaterialSelect"),
+  accountMaterialInput: document.querySelector("#accountMaterialInput"),
+  accountMaterialOptions: document.querySelector("#accountMaterialOptions"),
   accountMaterialsHint: document.querySelector("#accountMaterialsHint"),
-  ledgerMaterialsSelect: document.querySelector("#ledgerMaterialsSelect"),
+  ledgerMaterialSelect: document.querySelector("#ledgerMaterialSelect"),
+  ledgerMaterialInput: document.querySelector("#ledgerMaterialInput"),
+  ledgerMaterialOptions: document.querySelector("#ledgerMaterialOptions"),
   ledgerMaterialsHint: document.querySelector("#ledgerMaterialsHint"),
   ledgerCustomerName: document.querySelector("#ledgerCustomerName"),
   ledgerCustomerPhone: document.querySelector("#ledgerCustomerPhone"),
@@ -399,83 +403,90 @@ function customerTotal(customerId) {
   return customerTransactions(customerId).reduce((sum, item) => sum + Number(item.amount || 0), 0);
 }
 
-function selectedMaterialNames(selectElement) {
-  return Array.from(selectElement.selectedOptions).map((option) => option.textContent.trim());
-}
-
-function transactionMaterialsForSave(form, selectElement) {
-  const isCredit = formDirection(form);
-  const materials = selectedMaterialNames(selectElement);
-
-  if (isCredit) {
-    return materials;
-  }
-
-  if (!materials.length) {
-    toast('يرجى اختيار مادة واحدة على الأقل لدين "عليه".');
-    return null;
-  }
-
-  return materials;
-}
-
-function updateMaterialsFieldHint(form, hintElement) {
-  if (!hintElement) return;
-
-  const isCredit = formDirection(form);
-  hintElement.textContent = isCredit
-    ? 'اختيار المواد اختياري عند "له".'
-    : 'اختيار المواد مطلوب عند "عليه".';
-}
-
 function materialOptionLabel(material) {
   return `${material.name} - ${money(material.price)} د.ع`;
 }
 
-function closeCustomerMaterialSelect() {
-  els.customerMaterialOptions.classList.add("hidden");
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
-function resetCustomerMaterialSelect() {
-  els.customerMaterialValue.value = "";
-  els.customerMaterialInput.value = "";
-  closeCustomerMaterialSelect();
-}
+function normalizeMaterialName(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
 
-function selectCustomerMaterial(material) {
-  els.customerMaterialValue.value = material.name;
-  els.customerMaterialInput.value = materialOptionLabel(material);
-  closeCustomerMaterialSelect();
-}
-
-function syncCustomerMaterialFromInput() {
-  const query = els.customerMaterialInput.value.trim().toLowerCase();
-  if (!query) {
-    els.customerMaterialValue.value = "";
-    return false;
+  const separatorIndex = trimmed.lastIndexOf(" - ");
+  if (separatorIndex > 0 && trimmed.includes("د.ع")) {
+    return trimmed.slice(0, separatorIndex).trim();
   }
 
-  const match = state.materials.find((material) => {
-    const label = materialOptionLabel(material).toLowerCase();
-    return label === query || material.name.toLowerCase() === query;
+  return trimmed;
+}
+
+function parseMaterialNamesInput(value) {
+  return String(value || "")
+    .split(/[،,]/)
+    .map((part) => normalizeMaterialName(part))
+    .filter(Boolean);
+}
+
+function findMaterialByName(name) {
+  const normalized = normalizeMaterialName(name).toLowerCase();
+  if (!normalized) return null;
+
+  return state.materials.find((material) => material.name.toLowerCase() === normalized) || null;
+}
+
+async function ensureMaterialExists(name, price = 0) {
+  const materialName = normalizeMaterialName(name);
+  if (!materialName) return null;
+
+  const existing = findMaterialByName(materialName);
+  if (existing) return existing.name;
+
+  const materialId = await addRecord("materials", {
+    name: materialName,
+    price: Number(price) || 0,
   });
 
-  if (match) {
-    selectCustomerMaterial(match);
-    return true;
-  }
+  if (!materialId) return null;
 
-  els.customerMaterialValue.value = "";
-  return false;
+  state.materials.unshift({ id: materialId, name: materialName, price: Number(price) || 0 });
+  renderMaterials();
+  renderStats();
+  refreshMaterialSelectOptions();
+  return materialName;
 }
 
-function renderCustomerMaterialSelect(filter = "") {
+async function ensureMaterialsExist(names) {
+  const uniqueNames = [...new Set(names.map((name) => normalizeMaterialName(name)).filter(Boolean))];
+  const resolved = [];
+
+  for (const name of uniqueNames) {
+    const materialName = await ensureMaterialExists(name);
+    if (!materialName) return null;
+    resolved.push(materialName);
+  }
+
+  return resolved;
+}
+
+function getActiveMaterialSearchTerm(inputValue) {
+  const parts = String(inputValue || "").split(/[،,]/);
+  return parts[parts.length - 1].trim();
+}
+
+function renderMaterialSelectOptions(optionsElement, filter = "") {
   const search = filter.trim().toLowerCase();
   const filtered = state.materials.filter((material) => {
     return `${material.name} ${material.price}`.toLowerCase().includes(search);
   });
 
-  els.customerMaterialOptions.innerHTML = filtered.length
+  const optionsHtml = filtered.length
     ? filtered
         .map(
           (material) => `
@@ -489,12 +500,208 @@ function renderCustomerMaterialSelect(filter = "") {
           `,
         )
         .join("")
-    : `<li class="searchable-select-empty">لا توجد مواد مطابقة</li>`;
+    : "";
+
+  const activeTerm = getActiveMaterialSearchTerm(filter);
+  const hasExactMatch = activeTerm
+    ? state.materials.some((material) => material.name.toLowerCase() === activeTerm.toLowerCase())
+    : false;
+
+  const createOptionHtml =
+    activeTerm && !hasExactMatch
+      ? `<li class="searchable-select-option searchable-select-create" role="option" data-create-name="${escapeHtml(activeTerm)}">
+          إضافة "${escapeHtml(activeTerm)}" كمادة جديدة
+        </li>`
+      : "";
+
+  if (!optionsHtml && !createOptionHtml) {
+    optionsElement.innerHTML = `<li class="searchable-select-empty">لا توجد مواد مطابقة</li>`;
+    return;
+  }
+
+  optionsElement.innerHTML = `${optionsHtml}${createOptionHtml}`;
+}
+
+function closeMaterialSelectOptions(optionsElement) {
+  optionsElement.classList.add("hidden");
+}
+
+function openMaterialSelectOptions(inputElement, optionsElement) {
+  renderMaterialSelectOptions(optionsElement, inputElement.value);
+  optionsElement.classList.remove("hidden");
+}
+
+function applyMaterialSelection(inputElement, material, { append = false } = {}) {
+  if (append) {
+    const parts = String(inputElement.value || "")
+      .split(/[،,]/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    parts.pop();
+    parts.push(materialOptionLabel(material));
+    inputElement.value = parts.join("، ");
+    return;
+  }
+
+  inputElement.value = materialOptionLabel(material);
+}
+
+function applyManualMaterialSelection(inputElement, name, { append = false } = {}) {
+  const materialName = normalizeMaterialName(name);
+  if (!materialName) return;
+
+  if (append) {
+    const parts = String(inputElement.value || "")
+      .split(/[،,]/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    parts.pop();
+    parts.push(materialName);
+    inputElement.value = parts.join("، ");
+    return;
+  }
+
+  inputElement.value = materialName;
+}
+
+function syncMaterialInputValue(inputElement, { multiple = false } = {}) {
+  const raw = inputElement.value.trim();
+  if (!raw) return multiple ? [] : "";
+
+  const names = parseMaterialNamesInput(raw);
+  if (!names.length) return multiple ? [] : "";
+
+  if (multiple) {
+    return names.map((name) => {
+      const match = findMaterialByName(name);
+      return match ? match.name : normalizeMaterialName(name);
+    });
+  }
+
+  const lastName = names[names.length - 1];
+  const match = findMaterialByName(lastName);
+  return match ? match.name : normalizeMaterialName(lastName);
+}
+
+async function transactionMaterialsForSave(form, inputElement) {
+  const isCredit = formDirection(form);
+  const materialNames = syncMaterialInputValue(inputElement, { multiple: true });
+
+  if (!isCredit && !materialNames.length) {
+    toast('يرجى اختيار مادة واحدة على الأقل لدين "عليه".');
+    return null;
+  }
+
+  if (!materialNames.length) return [];
+
+  return ensureMaterialsExist(materialNames);
+}
+
+function initMaterialSearchableSelect({ root, input, options, multiple = false }) {
+  input.addEventListener("focus", () => openMaterialSelectOptions(input, options));
+  input.addEventListener("input", () => openMaterialSelectOptions(input, options));
+  input.addEventListener("blur", () => {
+    window.setTimeout(() => closeMaterialSelectOptions(options), 120);
+  });
+
+  options.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+
+  options.addEventListener("click", (event) => {
+    const createOption = event.target.closest("[data-create-name]");
+    if (createOption) {
+      applyManualMaterialSelection(input, createOption.dataset.createName, { append: multiple });
+      closeMaterialSelectOptions(options);
+      return;
+    }
+
+    const option = event.target.closest("[data-material-id]");
+    if (!option) return;
+
+    const material = state.materials.find((item) => item.id === option.dataset.materialId);
+    if (material) {
+      applyMaterialSelection(input, material, { append: multiple });
+      closeMaterialSelectOptions(options);
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!root.contains(event.target)) {
+      closeMaterialSelectOptions(options);
+    }
+  });
+}
+
+function refreshMaterialSelectOptions() {
+  if (!els.customerMaterialOptions.classList.contains("hidden")) {
+    renderMaterialSelectOptions(els.customerMaterialOptions, els.customerMaterialInput.value);
+  }
+
+  if (!els.accountMaterialOptions.classList.contains("hidden")) {
+    renderMaterialSelectOptions(els.accountMaterialOptions, els.accountMaterialInput.value);
+  }
+
+  if (!els.ledgerMaterialOptions.classList.contains("hidden")) {
+    renderMaterialSelectOptions(els.ledgerMaterialOptions, els.ledgerMaterialInput.value);
+  }
+}
+
+function updateMaterialsFieldHint(form, hintElement) {
+  if (!hintElement) return;
+
+  const isCredit = formDirection(form);
+  hintElement.textContent = isCredit
+    ? 'اختيار المواد اختياري عند "له". يمكنك كتابة اسم مادة جديدة.'
+    : 'اختيار المواد مطلوب عند "عليه". يمكنك كتابة اسم مادة جديدة.';
+}
+
+function closeCustomerMaterialSelect() {
+  closeMaterialSelectOptions(els.customerMaterialOptions);
+}
+
+function resetCustomerMaterialSelect() {
+  els.customerMaterialValue.value = "";
+  els.customerMaterialInput.value = "";
+  closeCustomerMaterialSelect();
+}
+
+function resetAccountMaterialInput() {
+  els.accountMaterialInput.value = "";
+  closeMaterialSelectOptions(els.accountMaterialOptions);
+}
+
+function resetLedgerMaterialInput() {
+  els.ledgerMaterialInput.value = "";
+  closeMaterialSelectOptions(els.ledgerMaterialOptions);
+}
+
+function selectCustomerMaterial(material) {
+  els.customerMaterialValue.value = material.name;
+  applyMaterialSelection(els.customerMaterialInput, material);
+  closeCustomerMaterialSelect();
+}
+
+function syncCustomerMaterialFromInput() {
+  const materialName = syncMaterialInputValue(els.customerMaterialInput);
+  if (!materialName) {
+    els.customerMaterialValue.value = "";
+    return false;
+  }
+
+  els.customerMaterialValue.value = materialName;
+  const match = findMaterialByName(materialName);
+  if (match) {
+    els.customerMaterialInput.value = materialOptionLabel(match);
+  } else {
+    els.customerMaterialInput.value = materialName;
+  }
+
+  return true;
 }
 
 function openCustomerMaterialSelect() {
-  renderCustomerMaterialSelect(els.customerMaterialInput.value);
-  els.customerMaterialOptions.classList.remove("hidden");
+  openMaterialSelectOptions(els.customerMaterialInput, els.customerMaterialOptions);
 }
 
 function initCustomerMaterialSelect() {
@@ -515,6 +722,14 @@ function initCustomerMaterialSelect() {
   });
 
   els.customerMaterialOptions.addEventListener("click", (event) => {
+    const createOption = event.target.closest("[data-create-name]");
+    if (createOption) {
+      applyManualMaterialSelection(els.customerMaterialInput, createOption.dataset.createName);
+      syncCustomerMaterialFromInput();
+      closeCustomerMaterialSelect();
+      return;
+    }
+
     const option = event.target.closest("[data-material-id]");
     if (!option) return;
 
@@ -561,7 +776,9 @@ function renderCustomers() {
       const amountClass = total < 0 ? "amount-negative" : "amount-positive";
       return `
         <tr>
-          <td data-label="اسم العميل">${customer.name}</td>
+          <td data-label="اسم العميل">
+            <button type="button" class="customer-name-link" data-open-ledger="${customer.id}">${customer.name}</button>
+          </td>
           <td data-label="رقم الهاتف">${customer.phone}</td>
           <td data-label="آخر مادة">${lastTransaction?.materials?.join("، ") || customer.item || "-"}</td>
           <td data-label="تاريخ الدين">${dateText(customer.createdAt)}</td>
@@ -575,7 +792,7 @@ function renderCustomers() {
               </button>
               <button class="ghost-btn" data-open-ledger="${customer.id}">
                 <i data-lucide="book-open"></i>
-                إضافة حساب
+                عرض السجل
               </button>
               <button class="ghost-btn danger-btn" data-delete-customer="${customer.id}">
                 <i data-lucide="trash-2"></i>
@@ -673,17 +890,8 @@ function renderSelects() {
     .map((customer) => `<option value="${customer.id}">${customer.name} - ${customer.phone}</option>`)
     .join("");
 
-  const materialOptions = state.materials
-    .map((material) => `<option value="${material.id}">${material.name} - ${money(material.price)}</option>`)
-    .join("");
-
   els.accountCustomerSelect.innerHTML = customerOptions;
-  els.accountMaterialsSelect.innerHTML = materialOptions;
-  els.ledgerMaterialsSelect.innerHTML = materialOptions;
-
-  if (!els.customerMaterialOptions.classList.contains("hidden")) {
-    renderCustomerMaterialSelect(els.customerMaterialInput.value);
-  }
+  refreshMaterialSelectOptions();
 }
 
 function renderLedger() {
@@ -750,6 +958,7 @@ function openLedger(customerId) {
   const customer = state.customers.find((item) => item.id === customerId);
   state.activeCustomerId = customerId;
   renderLedger();
+  resetLedgerMaterialInput();
   updateMaterialsFieldHint(els.ledgerAccountForm, els.ledgerMaterialsHint);
 
   const dueInput = els.ledgerAccountForm.querySelector('[name="dueDate"]');
@@ -942,11 +1151,12 @@ els.quickMenuBtn.addEventListener("click", (event) => {
 els.openCustomerModal.addEventListener("click", () => {
   closeQuickMenu();
   resetCustomerMaterialSelect();
-  renderCustomerMaterialSelect();
+  openMaterialSelectOptions(els.customerMaterialInput, els.customerMaterialOptions);
   openModal(els.customerModal);
 });
 els.openAccountModal.addEventListener("click", () => {
   closeQuickMenu();
+  resetAccountMaterialInput();
   updateMaterialsFieldHint(els.accountForm, els.accountMaterialsHint);
   openModal(els.accountModal);
 });
@@ -1062,13 +1272,8 @@ function formDirection(form) {
 els.customerForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  if (!state.materials.length) {
-    toast("أضف موادًا أولًا من صفحة المواد.");
-    return;
-  }
-
   if (!syncCustomerMaterialFromInput()) {
-    toast("اختر مادة من القائمة.");
+    toast("أدخل اسم مادة.");
     els.customerMaterialInput.focus();
     return;
   }
@@ -1078,10 +1283,13 @@ els.customerForm.addEventListener("submit", async (event) => {
   try {
     const data = Object.fromEntries(new FormData(els.customerForm));
     const dueDate = data.dueDate || "";
+    const materialName = await ensureMaterialExists(data.item);
+    if (!materialName) return;
+
     const customerId = await addRecord("customers", {
       name: data.name.trim(),
       phone: data.phone,
-      item: data.item,
+      item: materialName,
       dueDate: dueDate || null,
     });
 
@@ -1090,7 +1298,7 @@ els.customerForm.addEventListener("submit", async (event) => {
         customerId,
         amount: data.amount,
         isCredit: false,
-        materials: [data.item],
+        materials: [materialName],
         note: "دين أولي",
         dueDate,
       });
@@ -1114,7 +1322,7 @@ els.customerForm.addEventListener("submit", async (event) => {
 els.accountForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const materials = transactionMaterialsForSave(els.accountForm, els.accountMaterialsSelect);
+  const materials = await transactionMaterialsForSave(els.accountForm, els.accountMaterialInput);
   if (materials === null) return;
 
   setFormLoading(els.accountForm, true);
@@ -1134,6 +1342,7 @@ els.accountForm.addEventListener("submit", async (event) => {
     if (saved) {
       await loadData();
       els.accountForm.reset();
+      resetAccountMaterialInput();
       els.accountModal.close();
       toast("تم حفظ الحساب.");
     }
@@ -1145,7 +1354,7 @@ els.accountForm.addEventListener("submit", async (event) => {
 els.ledgerAccountForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const materials = transactionMaterialsForSave(els.ledgerAccountForm, els.ledgerMaterialsSelect);
+  const materials = await transactionMaterialsForSave(els.ledgerAccountForm, els.ledgerMaterialInput);
   if (materials === null) return;
 
   setFormLoading(els.ledgerAccountForm, true);
@@ -1164,6 +1373,7 @@ els.ledgerAccountForm.addEventListener("submit", async (event) => {
     if (saved) {
       await loadData();
       els.ledgerAccountForm.reset();
+      resetLedgerMaterialInput();
       toast("تمت إضافة الحساب إلى السجل.");
     }
   } finally {
@@ -1206,6 +1416,18 @@ els.materialForm.addEventListener("submit", async (event) => {
 els.whatsappBtn.addEventListener("click", openWhatsApp);
 els.pdfBtn.addEventListener("click", downloadPdf);
 initCustomerMaterialSelect();
+initMaterialSearchableSelect({
+  root: els.accountMaterialSelect,
+  input: els.accountMaterialInput,
+  options: els.accountMaterialOptions,
+  multiple: true,
+});
+initMaterialSearchableSelect({
+  root: els.ledgerMaterialSelect,
+  input: els.ledgerMaterialInput,
+  options: els.ledgerMaterialOptions,
+  multiple: true,
+});
 initTheme();
 
 await initFirebase();
