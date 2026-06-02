@@ -35,6 +35,7 @@ const state = {
   activeCustomerId: null,
   paymentCustomerId: null,
   editingMaterialId: null,
+  editingTransactionId: null,
   search: "",
   theme: "light",
   notificationsOpen: false,
@@ -103,6 +104,12 @@ const els = {
   closeNotificationsBtn: document.querySelector("#closeNotificationsBtn"),
   ledgerDueBanner: document.querySelector("#ledgerDueBanner"),
   ledgerDueDate: document.querySelector("#ledgerDueDate"),
+  transactionEditModal: document.querySelector("#transactionEditModal"),
+  transactionEditForm: document.querySelector("#transactionEditForm"),
+  transactionEditMaterialSelect: document.querySelector("#transactionEditMaterialSelect"),
+  transactionEditMaterialInput: document.querySelector("#transactionEditMaterialInput"),
+  transactionEditMaterialOptions: document.querySelector("#transactionEditMaterialOptions"),
+  transactionEditMaterialsHint: document.querySelector("#transactionEditMaterialsHint"),
 };
 
 function money(value) {
@@ -164,6 +171,26 @@ function dueDateCellHtml(customer) {
 async function syncCustomerDueDate(customerId, dueDate) {
   if (!dueDate || !state.ready) return;
   await updateRecord("customers", customerId, { dueDate });
+}
+
+function dueDateInputValue(value) {
+  const due = parseDueDate(value);
+  if (!due) return "";
+  return `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, "0")}-${String(due.getDate()).padStart(2, "0")}`;
+}
+
+async function syncCustomerDueDateFromTransactions(customerId) {
+  if (!state.ready) return;
+
+  const latestDebitDue = [...customerTransactions(customerId)]
+    .reverse()
+    .find((item) => Number(item.amount) > 0 && item.dueDate);
+
+  const dueDate = latestDebitDue?.dueDate || null;
+  await updateRecord("customers", customerId, { dueDate });
+
+  const customer = state.customers.find((item) => item.id === customerId);
+  if (customer) customer.dueDate = dueDate;
 }
 
 function initTheme() {
@@ -645,6 +672,10 @@ function refreshMaterialSelectOptions() {
   if (!els.ledgerMaterialOptions.classList.contains("hidden")) {
     renderMaterialSelectOptions(els.ledgerMaterialOptions, els.ledgerMaterialInput.value);
   }
+
+  if (!els.transactionEditMaterialOptions.classList.contains("hidden")) {
+    renderMaterialSelectOptions(els.transactionEditMaterialOptions, els.transactionEditMaterialInput.value);
+  }
 }
 
 function updateMaterialsFieldHint(form, hintElement) {
@@ -674,6 +705,11 @@ function resetAccountMaterialInput() {
 function resetLedgerMaterialInput() {
   els.ledgerMaterialInput.value = "";
   closeMaterialSelectOptions(els.ledgerMaterialOptions);
+}
+
+function resetTransactionEditMaterialInput() {
+  els.transactionEditMaterialInput.value = "";
+  closeMaterialSelectOptions(els.transactionEditMaterialOptions);
 }
 
 function selectCustomerMaterial(material) {
@@ -925,6 +961,18 @@ function renderLedger() {
           <td data-label="المبلغ" class="${amountClass}">${money(item.amount)}</td>
           <td data-label="موعد التسديد">${item.dueDate ? dateText(item.dueDate) : "-"}</td>
           <td data-label="ملاحظة">${item.note || "-"}</td>
+          <td data-label="إجراءات">
+            <div class="row-actions ledger-row-actions">
+              <button type="button" class="ghost-btn" data-edit-transaction="${item.id}">
+                <i data-lucide="pencil"></i>
+                تعديل
+              </button>
+              <button type="button" class="ghost-btn danger-btn" data-delete-transaction="${item.id}">
+                <i data-lucide="trash-2"></i>
+                حذف
+              </button>
+            </div>
+          </td>
         </tr>
       `;
     })
@@ -957,19 +1005,85 @@ function closeModal(id) {
 function openLedger(customerId) {
   const customer = state.customers.find((item) => item.id === customerId);
   state.activeCustomerId = customerId;
+  state.editingTransactionId = null;
   renderLedger();
   resetLedgerMaterialInput();
   updateMaterialsFieldHint(els.ledgerAccountForm, els.ledgerMaterialsHint);
 
   const dueInput = els.ledgerAccountForm.querySelector('[name="dueDate"]');
-  if (dueInput && customer?.dueDate) {
-    const due = parseDueDate(customer.dueDate);
-    if (due) {
-      dueInput.value = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, "0")}-${String(due.getDate()).padStart(2, "0")}`;
-    }
+  if (dueInput) {
+    dueInput.value = customer?.dueDate ? dueDateInputValue(customer.dueDate) : "";
   }
 
   openModal(els.ledgerModal);
+}
+
+function openTransactionEdit(transactionId) {
+  const transaction = state.transactions.find((item) => item.id === transactionId);
+  if (!transaction) return;
+
+  state.editingTransactionId = transactionId;
+  const isCredit = Number(transaction.amount) < 0;
+  const direction = isCredit ? "credit" : "debit";
+
+  const directionInput = els.transactionEditForm.querySelector(`[name="direction"][value="${direction}"]`);
+  if (directionInput) directionInput.checked = true;
+  els.transactionEditForm.amount.value = Math.abs(Number(transaction.amount || 0));
+  els.transactionEditForm.dueDate.value = !isCredit && transaction.dueDate ? dueDateInputValue(transaction.dueDate) : "";
+  els.transactionEditForm.note.value = transaction.note || "";
+  els.transactionEditMaterialInput.value = transaction.materials?.join("، ") || "";
+  updateMaterialsFieldHint(els.transactionEditForm, els.transactionEditMaterialsHint);
+  openModal(els.transactionEditModal);
+}
+
+async function updateTransactionRecord(transactionId, { customerId, amount, isCredit, materials, note = "", dueDate = "" }) {
+  const numericAmount = Math.abs(Number(amount || 0));
+  const signedAmount = isCredit ? -numericAmount : numericAmount;
+  const payload = {
+    customerId,
+    amount: signedAmount,
+    type: isCredit ? "له" : "عليه",
+    materials: materials || [],
+    note,
+    dueDate: !isCredit && dueDate ? dueDate : null,
+  };
+
+  const saved = await updateRecord("transactions", transactionId, payload);
+  if (saved) {
+    await syncCustomerDueDateFromTransactions(customerId);
+  }
+
+  return saved;
+}
+
+async function deleteTransaction(transactionId) {
+  if (!state.ready) {
+    toast("الحذف يحتاج إعداد Firebase أولًا.");
+    return;
+  }
+
+  const transaction = state.transactions.find((item) => item.id === transactionId);
+  if (!transaction) return;
+
+  if (!window.confirm("هل أنت متأكد أنك تريد حذف هذا الحساب من السجل؟")) {
+    return;
+  }
+
+  try {
+    await withTimeout(deleteDoc(doc(state.db, "transactions", transactionId)));
+
+    if (state.editingTransactionId === transactionId) {
+      state.editingTransactionId = null;
+      els.transactionEditModal.close();
+    }
+
+    await loadData();
+    await syncCustomerDueDateFromTransactions(transaction.customerId);
+    toast("تم حذف الحساب من السجل.");
+  } catch (error) {
+    console.error("deleteTransaction error:", error);
+    toast(firestoreErrorMessage(error));
+  }
 }
 
 function openPaymentModal(customerId) {
@@ -1219,6 +1333,50 @@ els.ledgerAccountForm.addEventListener("change", (event) => {
   }
 });
 
+els.transactionEditForm.addEventListener("change", (event) => {
+  if (event.target.name === "direction") {
+    updateMaterialsFieldHint(els.transactionEditForm, els.transactionEditMaterialsHint);
+  }
+});
+
+els.transactionEditForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  if (!state.editingTransactionId) return;
+
+  const transaction = state.transactions.find((item) => item.id === state.editingTransactionId);
+  if (!transaction) return;
+
+  const materials = await transactionMaterialsForSave(els.transactionEditForm, els.transactionEditMaterialInput);
+  if (materials === null) return;
+
+  setFormLoading(els.transactionEditForm, true);
+
+  try {
+    const formData = new FormData(els.transactionEditForm);
+    const isCredit = formDirection(els.transactionEditForm);
+    const saved = await updateTransactionRecord(state.editingTransactionId, {
+      customerId: transaction.customerId,
+      amount: formData.get("amount"),
+      isCredit,
+      materials,
+      note: formData.get("note"),
+      dueDate: isCredit ? "" : formData.get("dueDate"),
+    });
+
+    if (saved) {
+      await loadData();
+      state.editingTransactionId = null;
+      els.transactionEditForm.reset();
+      resetTransactionEditMaterialInput();
+      els.transactionEditModal.close();
+      toast("تم تحديث الحساب.");
+    }
+  } finally {
+    setFormLoading(els.transactionEditForm, false);
+  }
+});
+
 els.refreshBtn.addEventListener("click", loadData);
 els.customerSearch.addEventListener("input", (event) => {
   state.search = event.target.value;
@@ -1263,6 +1421,12 @@ document.addEventListener("click", (event) => {
 
   const deleteMaterialId = event.target.closest("[data-delete-material]")?.dataset.deleteMaterial;
   if (deleteMaterialId) deleteMaterial(deleteMaterialId);
+
+  const editTransactionId = event.target.closest("[data-edit-transaction]")?.dataset.editTransaction;
+  if (editTransactionId) openTransactionEdit(editTransactionId);
+
+  const deleteTransactionId = event.target.closest("[data-delete-transaction]")?.dataset.deleteTransaction;
+  if (deleteTransactionId) deleteTransaction(deleteTransactionId);
 });
 
 function formDirection(form) {
@@ -1426,6 +1590,12 @@ initMaterialSearchableSelect({
   root: els.ledgerMaterialSelect,
   input: els.ledgerMaterialInput,
   options: els.ledgerMaterialOptions,
+  multiple: true,
+});
+initMaterialSearchableSelect({
+  root: els.transactionEditMaterialSelect,
+  input: els.transactionEditMaterialInput,
+  options: els.transactionEditMaterialOptions,
   multiple: true,
 });
 initTheme();

@@ -635,6 +635,16 @@ th {
   min-height: 40px;
 }
 
+.ledger-row-actions {
+  flex-wrap: nowrap;
+}
+
+.ledger-row-actions .ghost-btn {
+  padding: 6px 10px;
+  font-size: 12px;
+  min-height: 36px;
+}
+
 .split-layout {
   display: grid;
   grid-template-columns: 360px 1fr;

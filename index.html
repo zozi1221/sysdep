@@ -308,6 +308,62 @@
       </form>
     </dialog>
 
+    <dialog class="modal" id="transactionEditModal">
+      <form class="modal-card" id="transactionEditForm">
+        <div class="modal-header">
+          <h3>تعديل الحساب</h3>
+          <button class="icon-btn" value="cancel" type="button" data-close="transactionEditModal">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="debt-direction">
+          <span>نوع الدين</span>
+          <label class="check-row">
+            <input type="radio" name="direction" value="debit" checked />
+            عليه
+          </label>
+          <label class="check-row">
+            <input type="radio" name="direction" value="credit" />
+            له
+          </label>
+        </div>
+        <label>
+          المواد
+          <div class="searchable-select" id="transactionEditMaterialSelect">
+            <div class="searchable-select-field">
+              <i data-lucide="search"></i>
+              <input
+                type="text"
+                id="transactionEditMaterialInput"
+                placeholder="ابحث عن مادة أو اكتب اسمًا جديدًا..."
+                autocomplete="off"
+                aria-autocomplete="list"
+                aria-controls="transactionEditMaterialOptions"
+              />
+            </div>
+            <ul class="searchable-select-options hidden" id="transactionEditMaterialOptions" role="listbox"></ul>
+          </div>
+          <small id="transactionEditMaterialsHint">اختيار المواد مطلوب عند "عليه".</small>
+        </label>
+        <label>
+          مبلغ الحساب
+          <input name="amount" required type="number" step="0.01" placeholder="0" />
+        </label>
+        <label>
+          موعد التسديد
+          <input name="dueDate" type="date" />
+        </label>
+        <label>
+          ملاحظة
+          <textarea name="note" rows="3" placeholder="اختياري"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-btn" type="button" data-close="transactionEditModal">إلغاء</button>
+          <button class="primary-btn" type="submit">حفظ التعديلات</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog class="modal wide" id="ledgerModal">
       <section class="modal-card ledger-card">
         <div class="modal-header">
@@ -384,6 +440,7 @@
                 <th>المبلغ</th>
                 <th>موعد التسديد</th>
                 <th>ملاحظة</th>
+                <th>إجراءات</th>
               </tr>
             </thead>
             <tbody id="ledgerTable"></tbody>
