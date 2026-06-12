@@ -83,7 +83,8 @@ const els = {
   ledgerMaterialInput: document.querySelector("#ledgerMaterialInput"),
   ledgerMaterialOptions: document.querySelector("#ledgerMaterialOptions"),
   ledgerMaterialsHint: document.querySelector("#ledgerMaterialsHint"),
-  ledgerCustomerName: document.querySelector("#ledgerCustomerName"),
+  ledgerCustomerNameInput: document.querySelector("#ledgerCustomerNameInput"),
+  ledgerSaveCustomerBtn: document.querySelector("#ledgerSaveCustomerBtn"),
   ledgerCustomerPhone: document.querySelector("#ledgerCustomerPhone"),
   ledgerTotal: document.querySelector("#ledgerTotal"),
   customerSearch: document.querySelector("#customerSearch"),
@@ -936,7 +937,9 @@ function renderLedger() {
 
   const transactions = customerTransactions(customer.id);
   const total = customerTotal(customer.id);
-  els.ledgerCustomerName.textContent = customer.name;
+  if (document.activeElement !== els.ledgerCustomerNameInput) {
+    els.ledgerCustomerNameInput.value = customer.name;
+  }
   els.ledgerCustomerPhone.textContent = customer.phone;
   els.ledgerTotal.textContent = `${money(total)} د.ع`;
   els.ledgerTotal.className = total < 0 ? "amount-negative" : "amount-positive";
@@ -1002,6 +1005,29 @@ function closeModal(id) {
   document.querySelector(`#${id}`).close();
 }
 
+async function saveLedgerCustomerName() {
+  const customer = state.customers.find((item) => item.id === state.activeCustomerId);
+  if (!customer) return;
+
+  const name = els.ledgerCustomerNameInput.value.trim();
+  if (!name) {
+    toast("أدخل اسم العميل.");
+    els.ledgerCustomerNameInput.focus();
+    return;
+  }
+
+  if (name === customer.name) {
+    toast("لم يتم تغيير الاسم.");
+    return;
+  }
+
+  const saved = await updateRecord("customers", customer.id, { name });
+  if (saved) {
+    await loadData();
+    toast("تم تحديث اسم العميل.");
+  }
+}
+
 function openLedger(customerId) {
   const customer = state.customers.find((item) => item.id === customerId);
   state.activeCustomerId = customerId;
@@ -1022,12 +1048,14 @@ function openTransactionEdit(transactionId) {
   const transaction = state.transactions.find((item) => item.id === transactionId);
   if (!transaction) return;
 
+  const customer = state.customers.find((item) => item.id === transaction.customerId);
   state.editingTransactionId = transactionId;
   const isCredit = Number(transaction.amount) < 0;
   const direction = isCredit ? "credit" : "debit";
 
   const directionInput = els.transactionEditForm.querySelector(`[name="direction"][value="${direction}"]`);
   if (directionInput) directionInput.checked = true;
+  els.transactionEditForm.customerName.value = customer?.name || "";
   els.transactionEditForm.amount.value = Math.abs(Number(transaction.amount || 0));
   els.transactionEditForm.dueDate.value = !isCredit && transaction.dueDate ? dueDateInputValue(transaction.dueDate) : "";
   els.transactionEditForm.note.value = transaction.note || "";
@@ -1355,6 +1383,21 @@ els.transactionEditForm.addEventListener("submit", async (event) => {
   try {
     const formData = new FormData(els.transactionEditForm);
     const isCredit = formDirection(els.transactionEditForm);
+    const customerName = String(formData.get("customerName") || "").trim();
+
+    if (!customerName) {
+      toast("أدخل اسم العميل.");
+      return;
+    }
+
+    const customer = state.customers.find((item) => item.id === transaction.customerId);
+    if (customer && customer.name !== customerName) {
+      const customerUpdated = await updateRecord("customers", transaction.customerId, {
+        name: customerName,
+      });
+      if (!customerUpdated) return;
+    }
+
     const saved = await updateTransactionRecord(state.editingTransactionId, {
       customerId: transaction.customerId,
       amount: formData.get("amount"),
@@ -1579,6 +1622,13 @@ els.materialForm.addEventListener("submit", async (event) => {
 
 els.whatsappBtn.addEventListener("click", openWhatsApp);
 els.pdfBtn.addEventListener("click", downloadPdf);
+els.ledgerSaveCustomerBtn.addEventListener("click", saveLedgerCustomerName);
+els.ledgerCustomerNameInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    saveLedgerCustomerName();
+  }
+});
 initCustomerMaterialSelect();
 initMaterialSearchableSelect({
   root: els.accountMaterialSelect,

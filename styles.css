@@ -897,6 +897,49 @@ label small,
   height: 18px;
 }
 
+.ledger-modal-header {
+  align-items: flex-start;
+}
+
+.ledger-customer-info {
+  display: grid;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ledger-customer-info h3 {
+  margin: 0;
+  color: var(--text);
+}
+
+.ledger-customer-info p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.ledger-name-field {
+  display: grid;
+  gap: 6px;
+  max-width: 420px;
+}
+
+.ledger-name-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ledger-name-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.ledger-name-row .ghost-btn {
+  white-space: nowrap;
+}
+
 .ledger-summary {
   justify-content: space-between;
   gap: 14px;
@@ -1209,6 +1252,16 @@ label small,
 
   .material-item .row-actions .ghost-btn {
     flex: 1;
+  }
+
+  .ledger-name-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ledger-name-row .ghost-btn {
+    width: 100%;
+    justify-content: center;
   }
 
   .ledger-summary {

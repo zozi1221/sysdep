@@ -316,6 +316,10 @@
             <i data-lucide="x"></i>
           </button>
         </div>
+        <label>
+          اسم العميل
+          <input name="customerName" required placeholder="اسم العميل" />
+        </label>
         <div class="debt-direction">
           <span>نوع الدين</span>
           <label class="check-row">
@@ -366,9 +370,19 @@
 
     <dialog class="modal wide" id="ledgerModal">
       <section class="modal-card ledger-card">
-        <div class="modal-header">
-          <div>
-            <h3 id="ledgerCustomerName">سجل العميل</h3>
+        <div class="modal-header ledger-modal-header">
+          <div class="ledger-customer-info">
+            <h3>سجل العميل</h3>
+            <label class="ledger-name-field">
+              اسم العميل
+              <div class="ledger-name-row">
+                <input id="ledgerCustomerNameInput" type="text" placeholder="اسم العميل" />
+                <button type="button" class="ghost-btn" id="ledgerSaveCustomerBtn">
+                  <i data-lucide="save"></i>
+                  حفظ الاسم
+                </button>
+              </div>
+            </label>
             <p id="ledgerCustomerPhone"></p>
           </div>
           <button class="icon-btn" type="button" data-close="ledgerModal">
