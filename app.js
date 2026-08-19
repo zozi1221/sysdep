@@ -40,6 +40,7 @@ const state = {
   theme: "light",
   notificationsOpen: false,
   pageBeforeNotifications: "dailyPage",
+  accountListLines: [],
 };
 
 const els = {
@@ -50,9 +51,11 @@ const els = {
   fabStack: document.querySelector("#fabStack"),
   openCustomerModal: document.querySelector("#openCustomerModal"),
   openAccountModal: document.querySelector("#openAccountModal"),
+  openAccountListModal: document.querySelector("#openAccountListModal"),
   refreshBtn: document.querySelector("#refreshBtn"),
   customerModal: document.querySelector("#customerModal"),
   accountModal: document.querySelector("#accountModal"),
+  accountListModal: document.querySelector("#accountListModal"),
   paymentModal: document.querySelector("#paymentModal"),
   paymentForm: document.querySelector("#paymentForm"),
   paymentCustomerName: document.querySelector("#paymentCustomerName"),
@@ -60,6 +63,7 @@ const els = {
   ledgerModal: document.querySelector("#ledgerModal"),
   customerForm: document.querySelector("#customerForm"),
   accountForm: document.querySelector("#accountForm"),
+  accountListForm: document.querySelector("#accountListForm"),
   materialForm: document.querySelector("#materialForm"),
   materialFormTitle: document.querySelector("#materialFormTitle"),
   materialSubmitBtn: document.querySelector("#materialSubmitBtn"),
@@ -75,10 +79,20 @@ const els = {
   customersCount: document.querySelector("#customersCount"),
   materialsCount: document.querySelector("#materialsCount"),
   accountCustomerSelect: document.querySelector("#accountCustomerSelect"),
+  accountListCustomerSelect: document.querySelector("#accountListCustomerSelect"),
   accountMaterialSelect: document.querySelector("#accountMaterialSelect"),
   accountMaterialInput: document.querySelector("#accountMaterialInput"),
   accountMaterialOptions: document.querySelector("#accountMaterialOptions"),
   accountMaterialsHint: document.querySelector("#accountMaterialsHint"),
+  accountListMaterialSelect: document.querySelector("#accountListMaterialSelect"),
+  accountListMaterialInput: document.querySelector("#accountListMaterialInput"),
+  accountListMaterialOptions: document.querySelector("#accountListMaterialOptions"),
+  accountListMaterialsHint: document.querySelector("#accountListMaterialsHint"),
+  accountListQtyInput: document.querySelector("#accountListQtyInput"),
+  accountListAddBtn: document.querySelector("#accountListAddBtn"),
+  accountListItems: document.querySelector("#accountListItems"),
+  accountListTotal: document.querySelector("#accountListTotal"),
+  accountListAmountInput: document.querySelector("#accountListAmountInput"),
   ledgerMaterialSelect: document.querySelector("#ledgerMaterialSelect"),
   ledgerMaterialInput: document.querySelector("#ledgerMaterialInput"),
   ledgerMaterialOptions: document.querySelector("#ledgerMaterialOptions"),
@@ -214,7 +228,7 @@ function toggleTheme() {
 
 const PAGE_TITLES = {
   dailyPage: "الحسابات اليومية",
-  materialsPage: "المواد",
+  materialsPage: "المخزون",
 };
 
 function closeNotificationsPage() {
@@ -413,7 +427,7 @@ async function loadData() {
     state.customers = sortCustomersByName(
       customersSnap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() })),
     );
-    state.materials = materialsSnap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
+    state.materials = materialsSnap.docs.map((docItem) => normalizeMaterialRecord(docItem.id, docItem.data()));
     state.transactions = transactionsSnap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
   } catch (error) {
     console.error("loadData error:", error);
@@ -431,8 +445,49 @@ function customerTotal(customerId) {
   return customerTransactions(customerId).reduce((sum, item) => sum + Number(item.amount || 0), 0);
 }
 
+function parseMaterialPriceValue(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : Number(fallback) || 0;
+}
+
+function materialSalePrice(material = {}) {
+  return parseMaterialPriceValue(material.salePrice ?? material.price ?? material.unitPrice);
+}
+
+function materialPurchasePrice(material = {}) {
+  return parseMaterialPriceValue(material.purchasePrice);
+}
+
+function normalizeMaterialRecord(id, data = {}) {
+  const salePrice = materialSalePrice(data);
+  const purchasePrice = materialPurchasePrice(data);
+
+  return {
+    id,
+    ...data,
+    name: String(data.name || "").trim(),
+    purchasePrice,
+    salePrice,
+    price: salePrice,
+    quantity: data.quantity ?? null,
+  };
+}
+
 function materialOptionLabel(material) {
-  return `${material.name} - ${money(material.price)} د.ع`;
+  return `${material.name} - ${money(materialSalePrice(material))} د.ع`;
+}
+
+function materialQuantityLabel(material) {
+  if (material.quantity === null || material.quantity === undefined || material.quantity === "") {
+    return "غير محدود";
+  }
+  return Number(material.quantity).toLocaleString("ar-IQ");
+}
+
+function parseMaterialQuantity(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function escapeHtml(value) {
@@ -478,12 +533,23 @@ async function ensureMaterialExists(name, price = 0) {
 
   const materialId = await addRecord("materials", {
     name: materialName,
+    purchasePrice: 0,
+    salePrice: Number(price) || 0,
     price: Number(price) || 0,
+    quantity: null,
   });
 
   if (!materialId) return null;
 
-  state.materials.unshift({ id: materialId, name: materialName, price: Number(price) || 0 });
+  state.materials.unshift(
+    normalizeMaterialRecord(materialId, {
+      name: materialName,
+      purchasePrice: 0,
+      salePrice: Number(price) || 0,
+      price: Number(price) || 0,
+      quantity: null,
+    }),
+  );
   renderMaterials();
   renderStats();
   refreshMaterialSelectOptions();
@@ -511,7 +577,7 @@ function getActiveMaterialSearchTerm(inputValue) {
 function renderMaterialSelectOptions(optionsElement, filter = "") {
   const search = filter.trim().toLowerCase();
   const filtered = state.materials.filter((material) => {
-    return `${material.name} ${material.price}`.toLowerCase().includes(search);
+    return `${material.name} ${material.salePrice} ${material.purchasePrice}`.toLowerCase().includes(search);
   });
 
   const optionsHtml = filtered.length
@@ -538,12 +604,12 @@ function renderMaterialSelectOptions(optionsElement, filter = "") {
   const createOptionHtml =
     activeTerm && !hasExactMatch
       ? `<li class="searchable-select-option searchable-select-create" role="option" data-create-name="${escapeHtml(activeTerm)}">
-          إضافة "${escapeHtml(activeTerm)}" كمادة جديدة
+          إضافة "${escapeHtml(activeTerm)}" كصنف جديد
         </li>`
       : "";
 
   if (!optionsHtml && !createOptionHtml) {
-    optionsElement.innerHTML = `<li class="searchable-select-empty">لا توجد مواد مطابقة</li>`;
+    optionsElement.innerHTML = `<li class="searchable-select-empty">لا توجد أصناف مطابقة</li>`;
     return;
   }
 
@@ -616,7 +682,7 @@ async function transactionMaterialsForSave(form, inputElement) {
   const materialNames = syncMaterialInputValue(inputElement, { multiple: true });
 
   if (!isCredit && !materialNames.length) {
-    toast('يرجى اختيار مادة واحدة على الأقل لدين "عليه".');
+    toast('يرجى اختيار صنف واحد على الأقل لدين "عليه".');
     return null;
   }
 
@@ -670,6 +736,10 @@ function refreshMaterialSelectOptions() {
     renderMaterialSelectOptions(els.accountMaterialOptions, els.accountMaterialInput.value);
   }
 
+  if (!els.accountListMaterialOptions.classList.contains("hidden")) {
+    renderMaterialSelectOptions(els.accountListMaterialOptions, els.accountListMaterialInput.value);
+  }
+
   if (!els.ledgerMaterialOptions.classList.contains("hidden")) {
     renderMaterialSelectOptions(els.ledgerMaterialOptions, els.ledgerMaterialInput.value);
   }
@@ -684,8 +754,8 @@ function updateMaterialsFieldHint(form, hintElement) {
 
   const isCredit = formDirection(form);
   hintElement.textContent = isCredit
-    ? 'اختيار المواد اختياري عند "له". يمكنك كتابة اسم مادة جديدة.'
-    : 'اختيار المواد مطلوب عند "عليه". يمكنك كتابة اسم مادة جديدة.';
+    ? 'اختيار الأصناف اختياري عند "له". يمكنك اختيار أي عدد دون خصم من المخزون.'
+    : 'اختيار الأصناف مطلوب عند "عليه". يمكنك اختيار أي عدد دون خصم من المخزون.';
 }
 
 function closeCustomerMaterialSelect() {
@@ -701,6 +771,99 @@ function resetCustomerMaterialSelect() {
 function resetAccountMaterialInput() {
   els.accountMaterialInput.value = "";
   closeMaterialSelectOptions(els.accountMaterialOptions);
+}
+
+function accountListLineTotal(line) {
+  return Number(line.price || 0) * Number(line.qty || 1);
+}
+
+function accountListSum() {
+  return state.accountListLines.reduce((sum, line) => sum + accountListLineTotal(line), 0);
+}
+
+function syncAccountListAmountFromSum() {
+  const total = accountListSum();
+  els.accountListAmountInput.value = total ? String(total) : "";
+  els.accountListTotal.textContent = `${money(total)} د.ع`;
+}
+
+function renderAccountListItems() {
+  if (!state.accountListLines.length) {
+    els.accountListItems.innerHTML = "";
+    syncAccountListAmountFromSum();
+    return;
+  }
+
+  els.accountListItems.innerHTML = state.accountListLines
+    .map(
+      (line) => `
+        <li class="account-list-item">
+          <strong>${escapeHtml(line.name)}</strong>
+          <span>${money(line.price)} × ${line.qty} = ${money(accountListLineTotal(line))} د.ع</span>
+          <button class="icon-btn" type="button" data-remove-account-list="${line.id}" title="حذف الصنف">
+            <i data-lucide="trash-2"></i>
+          </button>
+        </li>
+      `,
+    )
+    .join("");
+
+  syncAccountListAmountFromSum();
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function resetAccountListForm() {
+  state.accountListLines = [];
+  els.accountListMaterialInput.value = "";
+  els.accountListQtyInput.value = "1";
+  closeMaterialSelectOptions(els.accountListMaterialOptions);
+  renderAccountListItems();
+}
+
+function addMaterialToAccountList() {
+  const names = parseMaterialNamesInput(els.accountListMaterialInput.value);
+  const materialName = names[0] || "";
+  if (!materialName) {
+    toast("اختر صنفًا أو اكتب اسمه ثم اضغط إضافة.");
+    els.accountListMaterialInput.focus();
+    return;
+  }
+
+  const qty = Math.max(1, Math.floor(Number(els.accountListQtyInput.value) || 1));
+  const existingMaterial = findMaterialByName(materialName);
+  const name = existingMaterial ? existingMaterial.name : materialName;
+  const price = materialSalePrice(existingMaterial);
+  const existingLine = state.accountListLines.find((line) => line.name.toLowerCase() === name.toLowerCase());
+
+  if (existingLine) {
+    existingLine.qty += qty;
+  } else {
+    state.accountListLines.push({
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      name,
+      price,
+      qty,
+    });
+  }
+
+  els.accountListMaterialInput.value = "";
+  els.accountListQtyInput.value = "1";
+  closeMaterialSelectOptions(els.accountListMaterialOptions);
+  renderAccountListItems();
+}
+
+async function accountListMaterialsForSave() {
+  const isCredit = formDirection(els.accountListForm);
+  const names = state.accountListLines.map((line) => line.name);
+
+  if (!isCredit && !names.length) {
+    toast('يرجى إضافة صنف واحد على الأقل لدين "عليه".');
+    return null;
+  }
+
+  if (!names.length) return [];
+
+  return ensureMaterialsExist(names);
 }
 
 function resetLedgerMaterialInput() {
@@ -817,7 +980,7 @@ function renderCustomers() {
             <button type="button" class="customer-name-link" data-open-ledger="${customer.id}">${customer.name}</button>
           </td>
           <td data-label="رقم الهاتف">${customer.phone}</td>
-          <td data-label="آخر مادة">${lastTransaction?.materials?.join("، ") || customer.item || "-"}</td>
+          <td data-label="آخر صنف">${lastTransaction?.materials?.join("، ") || customer.item || "-"}</td>
           <td data-label="تاريخ الدين">${dateText(customer.createdAt)}</td>
           <td data-label="موعد التسديد">${dueDateCellHtml(customer)}</td>
           <td data-label="المبلغ الحالي" class="${amountClass}">${money(total)}</td>
@@ -848,10 +1011,27 @@ function renderCustomers() {
 function resetMaterialForm() {
   state.editingMaterialId = null;
   els.materialForm.reset();
-  els.materialFormTitle.textContent = "إضافة مادة";
-  els.materialSubmitBtn.innerHTML = '<i data-lucide="save"></i> حفظ المادة';
+  setMaterialFormValues({ name: "", purchasePrice: "", salePrice: "", quantity: "" });
+  els.materialFormTitle.textContent = "إضافة صنف";
+  els.materialSubmitBtn.innerHTML = '<i data-lucide="save"></i> حفظ الصنف';
   els.materialCancelEditBtn.classList.add("hidden");
   if (window.lucide) window.lucide.createIcons();
+}
+
+function getMaterialFormField(name) {
+  return els.materialForm.querySelector(`[name="${name}"]`);
+}
+
+function setMaterialFormValues({ name = "", purchasePrice = "", salePrice = "", quantity = "" } = {}) {
+  const nameInput = getMaterialFormField("name");
+  const purchasePriceInput = getMaterialFormField("purchasePrice");
+  const salePriceInput = getMaterialFormField("salePrice");
+  const quantityInput = getMaterialFormField("quantity");
+
+  if (nameInput) nameInput.value = name;
+  if (purchasePriceInput) purchasePriceInput.value = purchasePrice;
+  if (salePriceInput) salePriceInput.value = salePrice;
+  if (quantityInput) quantityInput.value = quantity;
 }
 
 function openMaterialEdit(materialId) {
@@ -859,9 +1039,14 @@ function openMaterialEdit(materialId) {
   if (!material) return;
 
   state.editingMaterialId = materialId;
-  els.materialForm.name.value = material.name;
-  els.materialForm.price.value = material.price;
-  els.materialFormTitle.textContent = "تعديل مادة";
+  setMaterialFormValues({
+    name: material.name || "",
+    purchasePrice: material.purchasePrice ?? "",
+    salePrice: material.salePrice ?? material.price ?? "",
+    quantity:
+      material.quantity === null || material.quantity === undefined ? "" : material.quantity,
+  });
+  els.materialFormTitle.textContent = "تعديل صنف";
   els.materialSubmitBtn.innerHTML = '<i data-lucide="save"></i> حفظ التعديلات';
   els.materialCancelEditBtn.classList.remove("hidden");
   els.materialForm.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -875,7 +1060,9 @@ function renderMaterials() {
         <li class="material-item">
           <div class="material-info">
             <strong>${material.name}</strong>
-            <span>${money(material.price)} د.ع</span>
+            <span>سعر الشراء: ${money(materialPurchasePrice(material))} د.ع</span>
+            <span>سعر البيع: ${money(materialSalePrice(material))} د.ع</span>
+            <span class="material-quantity">الكمية: ${materialQuantityLabel(material)}</span>
           </div>
           <div class="row-actions">
             <button class="ghost-btn" data-edit-material="${material.id}">
@@ -903,7 +1090,7 @@ async function deleteMaterial(materialId) {
   const material = state.materials.find((item) => item.id === materialId);
   if (!material) return;
 
-  if (!window.confirm(`هل أنت متأكد أنك تريد حذف مادة "${material.name}"؟`)) {
+  if (!window.confirm(`هل أنت متأكد أنك تريد حذف صنف "${material.name}" من المخزون؟`)) {
     return;
   }
 
@@ -915,7 +1102,7 @@ async function deleteMaterial(materialId) {
     }
 
     await loadData();
-    toast("تم حذف المادة.");
+    toast("تم حذف الصنف من المخزون.");
   } catch (error) {
     console.error("deleteMaterial error:", error);
     toast(firestoreErrorMessage(error));
@@ -928,6 +1115,7 @@ function renderSelects() {
     .join("");
 
   els.accountCustomerSelect.innerHTML = customerOptions;
+  els.accountListCustomerSelect.innerHTML = customerOptions;
   refreshMaterialSelectOptions();
 }
 
@@ -960,7 +1148,7 @@ function renderLedger() {
         <tr>
           <td data-label="التاريخ">${dateText(item.createdAt)}</td>
           <td data-label="نوع الدين">${item.type}</td>
-          <td data-label="المواد">${item.materials?.join("، ") || "-"}</td>
+          <td data-label="الأصناف">${item.materials?.join("، ") || "-"}</td>
           <td data-label="المبلغ" class="${amountClass}">${money(item.amount)}</td>
           <td data-label="موعد التسديد">${item.dueDate ? dateText(item.dueDate) : "-"}</td>
           <td data-label="ملاحظة">${item.note || "-"}</td>
@@ -1210,7 +1398,7 @@ function buildInvoiceElement(customer, transactions, total) {
         <tr>
           <th>التاريخ</th>
           <th>نوع الدين</th>
-          <th>المواد</th>
+          <th>الأصناف</th>
           <th>المبلغ</th>
         </tr>
       </thead>
@@ -1303,9 +1491,32 @@ els.openAccountModal.addEventListener("click", () => {
   openModal(els.accountModal);
 });
 
+els.openAccountListModal.addEventListener("click", () => {
+  closeQuickMenu();
+  els.accountListForm.reset();
+  resetAccountListForm();
+  updateMaterialsFieldHint(els.accountListForm, els.accountListMaterialsHint);
+  openModal(els.accountListModal);
+  if (window.lucide) window.lucide.createIcons();
+});
+
 els.accountForm.addEventListener("change", (event) => {
   if (event.target.name === "direction") {
     updateMaterialsFieldHint(els.accountForm, els.accountMaterialsHint);
+  }
+});
+
+els.accountListForm.addEventListener("change", (event) => {
+  if (event.target.name === "direction") {
+    updateMaterialsFieldHint(els.accountListForm, els.accountListMaterialsHint);
+  }
+});
+
+els.accountListAddBtn.addEventListener("click", addMaterialToAccountList);
+els.accountListMaterialInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    addMaterialToAccountList();
   }
 });
 
@@ -1470,6 +1681,12 @@ document.addEventListener("click", (event) => {
 
   const deleteTransactionId = event.target.closest("[data-delete-transaction]")?.dataset.deleteTransaction;
   if (deleteTransactionId) deleteTransaction(deleteTransactionId);
+
+  const removeAccountListId = event.target.closest("[data-remove-account-list]")?.dataset.removeAccountList;
+  if (removeAccountListId) {
+    state.accountListLines = state.accountListLines.filter((line) => line.id !== removeAccountListId);
+    renderAccountListItems();
+  }
 });
 
 function formDirection(form) {
@@ -1480,7 +1697,7 @@ els.customerForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   if (!syncCustomerMaterialFromInput()) {
-    toast("أدخل اسم مادة.");
+    toast("أدخل اسم صنف.");
     els.customerMaterialInput.focus();
     return;
   }
@@ -1558,6 +1775,38 @@ els.accountForm.addEventListener("submit", async (event) => {
   }
 });
 
+els.accountListForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const materials = await accountListMaterialsForSave();
+  if (materials === null) return;
+
+  setFormLoading(els.accountListForm, true);
+
+  try {
+    const formData = new FormData(els.accountListForm);
+    const isCredit = formDirection(els.accountListForm);
+    const saved = await createTransaction({
+      customerId: formData.get("customerId"),
+      amount: formData.get("amount") || accountListSum(),
+      isCredit,
+      materials,
+      note: formData.get("note"),
+      dueDate: isCredit ? "" : formData.get("dueDate"),
+    });
+
+    if (saved) {
+      await loadData();
+      els.accountListForm.reset();
+      resetAccountListForm();
+      els.accountListModal.close();
+      toast("تم حفظ قائمة الحساب.");
+    }
+  } finally {
+    setFormLoading(els.accountListForm, false);
+  }
+});
+
 els.ledgerAccountForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
@@ -1596,12 +1845,38 @@ els.materialForm.addEventListener("submit", async (event) => {
 
   try {
     const data = Object.fromEntries(new FormData(els.materialForm));
+    const isEditing = Boolean(state.editingMaterialId);
+    const existingMaterial = isEditing
+      ? state.materials.find((item) => item.id === state.editingMaterialId)
+      : null;
+    const purchasePriceInput = String(data.purchasePrice ?? "").trim();
+    const salePriceInput = String(data.salePrice ?? "").trim();
+    const parsedPurchasePrice = purchasePriceInput === ""
+      ? Number(existingMaterial?.purchasePrice ?? 0)
+      : Number(purchasePriceInput);
+    const parsedSalePrice = salePriceInput === ""
+      ? Number(existingMaterial?.salePrice ?? existingMaterial?.price ?? 0)
+      : Number(salePriceInput);
+    const quantityInput = getMaterialFormField("quantity");
+    const quantity = quantityInput
+      ? parseMaterialQuantity(data.quantity)
+      : existingMaterial?.quantity ?? null;
+
+    const salePrice = Number.isFinite(parsedSalePrice)
+      ? parsedSalePrice
+      : Number(existingMaterial?.salePrice ?? existingMaterial?.price ?? 0);
+    const purchasePrice = Number.isFinite(parsedPurchasePrice)
+      ? parsedPurchasePrice
+      : Number(existingMaterial?.purchasePrice ?? 0);
+
     const payload = {
       name: data.name.trim(),
-      price: Number(data.price || 0),
+      purchasePrice,
+      salePrice,
+      price: salePrice,
+      quantity,
     };
 
-    const isEditing = Boolean(state.editingMaterialId);
     let saved = false;
 
     if (isEditing) {
@@ -1613,7 +1888,7 @@ els.materialForm.addEventListener("submit", async (event) => {
     if (saved) {
       await loadData();
       resetMaterialForm();
-      toast(isEditing ? "تم تحديث المادة." : "تم حفظ المادة.");
+      toast(isEditing ? "تم تحديث الصنف." : "تم حفظ الصنف في المخزون.");
     }
   } finally {
     setFormLoading(els.materialForm, false);
@@ -1635,6 +1910,17 @@ initMaterialSearchableSelect({
   input: els.accountMaterialInput,
   options: els.accountMaterialOptions,
   multiple: true,
+});
+initMaterialSearchableSelect({
+  root: els.accountListMaterialSelect,
+  input: els.accountListMaterialInput,
+  options: els.accountListMaterialOptions,
+  multiple: false,
+});
+els.accountListMaterialOptions.addEventListener("click", (event) => {
+  if (event.target.closest("[data-material-id], [data-create-name]")) {
+    window.setTimeout(addMaterialToAccountList, 0);
+  }
 });
 initMaterialSearchableSelect({
   root: els.ledgerMaterialSelect,

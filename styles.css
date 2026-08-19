@@ -776,6 +776,59 @@ textarea:focus {
   text-align: center;
 }
 
+.account-list-picker {
+  display: grid;
+  grid-template-columns: 1fr 88px auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.account-list-picker .searchable-select {
+  min-width: 0;
+}
+
+.account-list-picker .primary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  min-height: 42px;
+}
+
+.account-list-items {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.account-list-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.account-list-item strong {
+  color: var(--text);
+}
+
+.account-list-item span {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.account-list-item .icon-btn {
+  width: 32px;
+  height: 32px;
+}
+
 .materials-list {
   display: grid;
   gap: 10px;
@@ -802,6 +855,11 @@ textarea:focus {
 
 .material-info strong {
   color: var(--text);
+}
+
+.material-quantity {
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .form-actions {
@@ -1252,6 +1310,22 @@ label small,
 
   .material-item .row-actions .ghost-btn {
     flex: 1;
+  }
+
+  .account-list-picker {
+    grid-template-columns: 1fr 88px;
+  }
+
+  .account-list-picker .primary-btn {
+    grid-column: 1 / -1;
+  }
+
+  .account-list-item {
+    grid-template-columns: 1fr auto;
+  }
+
+  .account-list-item span {
+    grid-column: 1 / -1;
   }
 
   .ledger-name-row {

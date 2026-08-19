@@ -19,7 +19,7 @@
           <div class="brand-mark">د</div>
           <div>
             <h1>ادارة الديون</h1>
-            <p>حسابات العملاء والمواد</p>
+            <p>حسابات العملاء والمخزون</p>
           </div>
         </div>
 
@@ -30,7 +30,7 @@
           </button>
           <button class="nav-tab" data-page="materialsPage">
             <i data-lucide="package-plus"></i>
-            المواد
+            المخزون
           </button>
         </nav>
       </aside>
@@ -62,6 +62,10 @@
                   <span>إضافة حساب</span>
                   <i data-lucide="receipt-text"></i>
                 </button>
+                <button class="fab-action" id="openAccountListModal">
+                  <span>قائمة حساب</span>
+                  <i data-lucide="list-plus"></i>
+                </button>
               </div>
               <button class="fab-main" id="quickMenuBtn" type="button" aria-label="إضافة">
                 <i data-lucide="plus"></i>
@@ -83,7 +87,7 @@
               <strong id="customersCount">0</strong>
             </article>
             <article class="stat-card">
-              <span>عدد المواد</span>
+              <span>عدد الأصناف</span>
               <strong id="materialsCount">0</strong>
             </article>
           </div>
@@ -103,7 +107,7 @@
                   <tr>
                     <th>اسم العميل</th>
                     <th>رقم الهاتف</th>
-                    <th>آخر مادة</th>
+                    <th>آخر صنف</th>
                     <th>تاريخ الدين</th>
                     <th>موعد التسديد</th>
                     <th>المبلغ الحالي</th>
@@ -121,31 +125,41 @@
           <div class="split-layout">
             <form class="panel form-panel" id="materialForm">
               <div class="panel-header">
-                <h3 id="materialFormTitle">إضافة مادة</h3>
+                <h3 id="materialFormTitle">إضافة صنف</h3>
               </div>
               <label>
-                اسم المادة
+                اسم الصنف
                 <input name="name" required placeholder="مثال: سمنت" />
               </label>
               <label>
-                السعر
-                <input name="price" required type="number" min="0" step="0.01" placeholder="0" />
+                سعر الشراء
+                <input name="purchasePrice" required type="number" min="0" step="0.01" placeholder="0" />
               </label>
+              <label>
+                سعر البيع
+                <input name="salePrice" required type="number" min="0" step="0.01" placeholder="0" />
+              </label>
+              <label>
+                الكمية
+                <input name="quantity" type="number" min="0" step="1" placeholder="غير محدود" />
+                <small>اتركه فارغًا للكمية غير المحدودة. لا تُخصم عند إضافة دين.</small>
+              </label>
+            
               <div class="form-actions">
                 <button class="ghost-btn hidden" type="button" id="materialCancelEditBtn">إلغاء التعديل</button>
                 <button class="primary-btn full" type="submit" id="materialSubmitBtn">
                   <i data-lucide="save"></i>
-                  حفظ المادة
+                  حفظ الصنف
                 </button>
               </div>
             </form>
 
             <div class="panel">
               <div class="panel-header">
-                <h3>قائمة المواد</h3>
+                <h3>قائمة المخزون</h3>
               </div>
               <ul class="materials-list" id="materialsList"></ul>
-              <div class="empty-state hidden" id="materialsEmpty">لا توجد مواد مضافة</div>
+              <div class="empty-state hidden" id="materialsEmpty">لا توجد أصناف في المخزون</div>
             </div>
           </div>
         </section>
@@ -190,7 +204,7 @@
           <input name="dueDate" type="date" />
         </label>
         <label>
-          المادة
+          الصنف
           <div class="searchable-select" id="customerMaterialSelect">
             <input type="hidden" name="item" id="customerMaterialValue" required />
             <div class="searchable-select-field">
@@ -198,7 +212,7 @@
               <input
                 type="text"
                 id="customerMaterialInput"
-                placeholder="ابحث عن مادة أو اكتب اسمًا جديدًا..."
+                placeholder="ابحث عن صنف أو اكتب اسمًا جديدًا..."
                 autocomplete="off"
                 aria-autocomplete="list"
                 aria-controls="customerMaterialOptions"
@@ -239,14 +253,14 @@
           <small>يسجل "له" المبلغ بالسالب، و"عليه" بالموجب.</small>
         </div>
         <label>
-          المواد
+          الأصناف
           <div class="searchable-select" id="accountMaterialSelect">
             <div class="searchable-select-field">
               <i data-lucide="search"></i>
               <input
                 type="text"
                 id="accountMaterialInput"
-                placeholder="ابحث عن مادة أو اكتب اسمًا جديدًا..."
+                placeholder="ابحث عن صنف أو اكتب اسمًا جديدًا..."
                 autocomplete="off"
                 aria-autocomplete="list"
                 aria-controls="accountMaterialOptions"
@@ -254,7 +268,7 @@
             </div>
             <ul class="searchable-select-options hidden" id="accountMaterialOptions" role="listbox"></ul>
           </div>
-          <small id="accountMaterialsHint">اختيار المواد مطلوب عند "عليه".</small>
+          <small id="accountMaterialsHint">اختيار الأصناف مطلوب عند "عليه". يمكنك اختيار أي عدد دون خصم من المخزون.</small>
         </label>
         <label>
           مبلغ الحساب
@@ -271,6 +285,88 @@
         <div class="modal-actions">
           <button class="ghost-btn" type="button" data-close="accountModal">إلغاء</button>
           <button class="primary-btn" type="submit">حفظ الحساب</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="accountListModal">
+      <form class="modal-card" id="accountListForm">
+        <div class="modal-header">
+          <h3>قائمة حساب</h3>
+          <button class="icon-btn" value="cancel" type="button" data-close="accountListModal">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <label>
+          العميل
+          <select name="customerId" required id="accountListCustomerSelect"></select>
+        </label>
+        <div class="debt-direction">
+          <span>نوع الدين</span>
+          <label class="check-row">
+            <input type="radio" name="direction" value="debit" checked />
+            عليه
+          </label>
+          <label class="check-row">
+            <input type="radio" name="direction" value="credit" />
+            له
+          </label>
+          <small>يسجل "له" المبلغ بالسالب، و"عليه" بالموجب.</small>
+        </div>
+        <label>
+          الأصناف
+          <div class="account-list-picker">
+            <div class="searchable-select" id="accountListMaterialSelect">
+              <div class="searchable-select-field">
+                <i data-lucide="search"></i>
+                <input
+                  type="text"
+                  id="accountListMaterialInput"
+                  placeholder="ابحث عن صنف أو اكتب اسمًا جديدًا..."
+                  autocomplete="off"
+                  aria-autocomplete="list"
+                  aria-controls="accountListMaterialOptions"
+                />
+              </div>
+              <ul class="searchable-select-options hidden" id="accountListMaterialOptions" role="listbox"></ul>
+            </div>
+            <input
+              id="accountListQtyInput"
+              type="number"
+              min="1"
+              step="1"
+              value="1"
+              title="الكمية"
+              placeholder="الكمية"
+            />
+            <button class="primary-btn" type="button" id="accountListAddBtn">
+              <i data-lucide="plus"></i>
+              إضافة
+            </button>
+          </div>
+          <small id="accountListMaterialsHint">أضف الأصناف واحدًا تلو الآخر. يُحسب مبلغ الحساب من مجموع الأسعار × الكمية.</small>
+          <ul class="account-list-items" id="accountListItems"></ul>
+        </label>
+        <div class="payment-summary account-list-total">
+          <span>مجموع أسعار المواد</span>
+          <strong id="accountListTotal">0 د.ع</strong>
+        </div>
+        <label>
+          مبلغ الحساب
+          <input name="amount" required type="number" step="0.01" placeholder="0" id="accountListAmountInput" />
+          <small>يُعبأ تلقائيًا من مجموع المواد ويمكن تعديله.</small>
+        </label>
+        <label>
+          موعد التسديد
+          <input name="dueDate" type="date" />
+        </label>
+        <label>
+          ملاحظة
+          <textarea name="note" rows="3" placeholder="اختياري"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-btn" type="button" data-close="accountListModal">إلغاء</button>
+          <button class="primary-btn" type="submit">حفظ القائمة</button>
         </div>
       </form>
     </dialog>
@@ -332,14 +428,14 @@
           </label>
         </div>
         <label>
-          المواد
+          الأصناف
           <div class="searchable-select" id="transactionEditMaterialSelect">
             <div class="searchable-select-field">
               <i data-lucide="search"></i>
               <input
                 type="text"
                 id="transactionEditMaterialInput"
-                placeholder="ابحث عن مادة أو اكتب اسمًا جديدًا..."
+                placeholder="ابحث عن صنف أو اكتب اسمًا جديدًا..."
                 autocomplete="off"
                 aria-autocomplete="list"
                 aria-controls="transactionEditMaterialOptions"
@@ -347,7 +443,7 @@
             </div>
             <ul class="searchable-select-options hidden" id="transactionEditMaterialOptions" role="listbox"></ul>
           </div>
-          <small id="transactionEditMaterialsHint">اختيار المواد مطلوب عند "عليه".</small>
+          <small id="transactionEditMaterialsHint">اختيار الأصناف مطلوب عند "عليه". لا يُخصم من المخزون.</small>
         </label>
         <label>
           مبلغ الحساب
@@ -426,7 +522,7 @@
                 <input
                   type="text"
                   id="ledgerMaterialInput"
-                  placeholder="ابحث عن مادة أو اكتب اسمًا جديدًا..."
+                  placeholder="ابحث عن صنف أو اكتب اسمًا جديدًا..."
                   autocomplete="off"
                   aria-autocomplete="list"
                   aria-controls="ledgerMaterialOptions"
@@ -434,7 +530,7 @@
               </div>
               <ul class="searchable-select-options hidden" id="ledgerMaterialOptions" role="listbox"></ul>
             </div>
-            <small id="ledgerMaterialsHint">اختيار المواد مطلوب عند "عليه".</small>
+            <small id="ledgerMaterialsHint">اختيار الأصناف مطلوب عند "عليه". لا يُخصم من المخزون.</small>
           </div>
           <input name="amount" type="number" step="0.01" required placeholder="المبلغ" />
           <input name="dueDate" type="date" title="موعد التسديد" />
@@ -450,7 +546,7 @@
               <tr>
                 <th>التاريخ</th>
                 <th>نوع الدين</th>
-                <th>المواد</th>
+                <th>الأصناف</th>
                 <th>المبلغ</th>
                 <th>موعد التسديد</th>
                 <th>ملاحظة</th>
