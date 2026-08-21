@@ -37,6 +37,7 @@ const state = {
   editingMaterialId: null,
   editingTransactionId: null,
   search: "",
+  materialSearch: "",
   theme: "light",
   notificationsOpen: false,
   pageBeforeNotifications: "dailyPage",
@@ -102,6 +103,7 @@ const els = {
   ledgerCustomerPhone: document.querySelector("#ledgerCustomerPhone"),
   ledgerTotal: document.querySelector("#ledgerTotal"),
   customerSearch: document.querySelector("#customerSearch"),
+  materialSearch: document.querySelector("#materialSearch"),
   customerMaterialSelect: document.querySelector("#customerMaterialSelect"),
   customerMaterialValue: document.querySelector("#customerMaterialValue"),
   customerMaterialInput: document.querySelector("#customerMaterialInput"),
@@ -524,49 +526,16 @@ function findMaterialByName(name) {
   return state.materials.find((material) => material.name.toLowerCase() === normalized) || null;
 }
 
-async function ensureMaterialExists(name, price = 0) {
+function resolveMaterialName(name) {
   const materialName = normalizeMaterialName(name);
-  if (!materialName) return null;
+  if (!materialName) return "";
 
   const existing = findMaterialByName(materialName);
-  if (existing) return existing.name;
-
-  const materialId = await addRecord("materials", {
-    name: materialName,
-    purchasePrice: 0,
-    salePrice: Number(price) || 0,
-    price: Number(price) || 0,
-    quantity: null,
-  });
-
-  if (!materialId) return null;
-
-  state.materials.unshift(
-    normalizeMaterialRecord(materialId, {
-      name: materialName,
-      purchasePrice: 0,
-      salePrice: Number(price) || 0,
-      price: Number(price) || 0,
-      quantity: null,
-    }),
-  );
-  renderMaterials();
-  renderStats();
-  refreshMaterialSelectOptions();
-  return materialName;
+  return existing ? existing.name : materialName;
 }
 
-async function ensureMaterialsExist(names) {
-  const uniqueNames = [...new Set(names.map((name) => normalizeMaterialName(name)).filter(Boolean))];
-  const resolved = [];
-
-  for (const name of uniqueNames) {
-    const materialName = await ensureMaterialExists(name);
-    if (!materialName) return null;
-    resolved.push(materialName);
-  }
-
-  return resolved;
+function resolveMaterialNames(names) {
+  return [...new Set((names || []).map((name) => resolveMaterialName(name)).filter(Boolean))];
 }
 
 function getActiveMaterialSearchTerm(inputValue) {
@@ -604,7 +573,7 @@ function renderMaterialSelectOptions(optionsElement, filter = "") {
   const createOptionHtml =
     activeTerm && !hasExactMatch
       ? `<li class="searchable-select-option searchable-select-create" role="option" data-create-name="${escapeHtml(activeTerm)}">
-          إضافة "${escapeHtml(activeTerm)}" كصنف جديد
+          استخدام "${escapeHtml(activeTerm)}"
         </li>`
       : "";
 
@@ -688,7 +657,7 @@ async function transactionMaterialsForSave(form, inputElement) {
 
   if (!materialNames.length) return [];
 
-  return ensureMaterialsExist(materialNames);
+  return resolveMaterialNames(materialNames);
 }
 
 function initMaterialSearchableSelect({ root, input, options, multiple = false }) {
@@ -754,8 +723,8 @@ function updateMaterialsFieldHint(form, hintElement) {
 
   const isCredit = formDirection(form);
   hintElement.textContent = isCredit
-    ? 'اختيار الأصناف اختياري عند "له". يمكنك اختيار أي عدد دون خصم من المخزون.'
-    : 'اختيار الأصناف مطلوب عند "عليه". يمكنك اختيار أي عدد دون خصم من المخزون.';
+    ? 'اختيار الأصناف اختياري عند "له". لا تُحفظ في المخزون ولا تُخصم منه.'
+    : 'اختيار الأصناف مطلوب عند "عليه". لا تُحفظ في المخزون ولا تُخصم منه.';
 }
 
 function closeCustomerMaterialSelect() {
@@ -863,7 +832,7 @@ async function accountListMaterialsForSave() {
 
   if (!names.length) return [];
 
-  return ensureMaterialsExist(names);
+  return resolveMaterialNames(names);
 }
 
 function resetLedgerMaterialInput() {
@@ -1054,7 +1023,16 @@ function openMaterialEdit(materialId) {
 }
 
 function renderMaterials() {
-  els.materialsList.innerHTML = state.materials
+  const search = state.materialSearch.trim().toLowerCase();
+  const materials = state.materials.filter((material) => {
+    const purchase = materialPurchasePrice(material);
+    const sale = materialSalePrice(material);
+    return `${material.name} ${purchase} ${sale} ${money(purchase)} ${money(sale)}`
+      .toLowerCase()
+      .includes(search);
+  });
+
+  els.materialsList.innerHTML = materials
     .map(
       (material) => `
         <li class="material-item">
@@ -1078,7 +1056,12 @@ function renderMaterials() {
       `,
     )
     .join("");
-  els.materialsEmpty.classList.toggle("hidden", state.materials.length > 0);
+
+  els.materialsEmpty.textContent = search
+    ? "لا توجد أصناف مطابقة للبحث"
+    : "لا توجد أصناف في المخزون";
+  els.materialsEmpty.classList.toggle("hidden", materials.length > 0);
+  if (window.lucide) window.lucide.createIcons();
 }
 
 async function deleteMaterial(materialId) {
@@ -1636,6 +1619,10 @@ els.customerSearch.addEventListener("input", (event) => {
   state.search = event.target.value;
   renderCustomers();
 });
+els.materialSearch.addEventListener("input", (event) => {
+  state.materialSearch = event.target.value;
+  renderMaterials();
+});
 
 els.themeToggleBtn.addEventListener("click", toggleTheme);
 els.notificationsBtn.addEventListener("click", () => {
@@ -1707,7 +1694,7 @@ els.customerForm.addEventListener("submit", async (event) => {
   try {
     const data = Object.fromEntries(new FormData(els.customerForm));
     const dueDate = data.dueDate || "";
-    const materialName = await ensureMaterialExists(data.item);
+    const materialName = resolveMaterialName(data.item);
     if (!materialName) return;
 
     const customerId = await addRecord("customers", {
